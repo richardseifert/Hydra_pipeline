@@ -1,0 +1,4 @@
+*.pyc
+testing_*
+info_files
+trash
