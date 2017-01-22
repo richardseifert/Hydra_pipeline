@@ -23,10 +23,10 @@ print 'findFibers finished importing'
 # If some_fits has no header or if the header has
 # no SLFIB header cards, then be sure to specify
 # the number of fibers with num_fibers.
-#
 @fitstools.manage_dtype(with_header=True)
 def getFiberSpacing(some_fits, num_fibers=None):
     data, header = some_fits
+    print header == None, ':D:D:D:DD:SDFVSGBR'
     if (header == None or getFiberNum(header) == 0) and num_fibers == None:
         raise TypeError('Can not determine number of fibers from information provided.')
     num_fibers = getFiberNum(header)
@@ -43,8 +43,11 @@ def getFiberSpacing(some_fits, num_fibers=None):
 #
 def getFiberNum(some_header):
     num_fibers = 1
-    while 'SLFIB'+str(num_fibers) in some_header:
-        num_fibers += 1
+    n = 1
+    while 'SLFIB'+str(n) in some_header:
+        if not 'SCS' in some_header['SLFIB'+str(n)]:
+            num_fibers += 1
+        n += 1
     num_fibers -= 1
     return num_fibers
 
@@ -94,7 +97,6 @@ def getFiberPositions(f):
         boop += 1
     
     return numFibers, start, spacing
-
 
 def findFibers(some_fits):
     if type(some_fits) == fits.hdu.hdulist.HDUList:
