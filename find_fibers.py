@@ -11,7 +11,7 @@ import numpy as np
 print 'findFibers importing matplotlib.pyplot as plt'
 import matplotlib.pyplot as plt
 print 'findFibers finished importing'
-
+from math import floor, ceil
 
 #Get the spacing between fibers in a fits-like object.
 #-----------------------------------------------------
@@ -98,29 +98,112 @@ def getFiberPositions(f):
     
     return numFibers, start, spacing
 
-def findFibers(some_fits):
-    if type(some_fits) == fits.hdu.hdulist.HDUList:
-        data = some_fits[0].data
-    elif type(some_fits) == fits.hdu.image.PrimaryHDU:
-        data = some_fits.data
-    else:
-        data = some_fits
-
-    fitstools.display(some_fits)
-    colAvgs = fitstools.colAvg(data)
-    fig, ax = plt.subplots()
-    ax.plot(colAvgs)
-    
-    threshhold = sum(colAvgs)/len(colAvgs)
-    ax.axhline(threshhold, ls='--')
+def find_sig_peaks(some_list):
+    threshhold = sum(some_list)/len(some_list)
     
     #Identify significant peaks
     peaks = []
     for i in range(len(colAvgs))[1:-1]:
         if colAvgs[i] > threshhold and colAvgs[i-1] < colAvgs[i] and colAvgs[i+1] < colAvgs[i]:
-            ax.plot(i, colAvgs[i], 'o', color='blue')
             peaks.append(i)
 
+    return peaks
+def find_n_peaks(some_list, n):
+    is_peak = lambda l, i: l[i-1] < l[i] and l[i] > l[i+1]
+    peaks = [i for i in range(len(some_list))[1:-1] if is_peak(some_list, i)]
+    n_high_peaks = sorted(peaks, key=lambda i: -some_list[i])[:n]
+    return sorted(n_high_peaks)
+def get_peaks(some_list, n=None):
+    return find_n_peaks(some_list, n) if n!=None else get_sig_peaks(some_list)
+def improve_peak_spacing(some_list, peak_list):
+    def ident_spacing(p_list):
+        p_spacing = [p2-p1 for p1, p2 in zip(p_list[:-1], p_list[1:])]
+        p_spacing_unique = list(set(p_spacing))
+        p_spacing_freq = [len([s for s in p_spacing if s == spacing]) for spacing in p_spacing_unique]
+        sort_freq_i = sorted(range(len(p_spacing_unique)), key=lambda i: -p_spacing_freq[i])
+
+        spacing1 = p_spacing_unique[sort_freq_i[0]]
+        freq1 = p_spacing_freq[sort_freq_i[0]]
+        spacing2 = p_spacing_unique[sort_freq_i[1]]
+        freq2 = p_spacing_freq[sort_freq_i[1]]
+        total_freq = freq1+freq2
+        spacing = float(freq1*spacing1 + freq2*spacing2)/float(total_freq)
+        return spacing
+    def is_sig(alist, i, sig, spacing=3):
+        low = int(round(i-spacing))
+        if low < 0:
+            low = 0
+        high = int(round(i+spacing))
+
+        base = min(alist[low:high])
+        percent_diff = (alist[i]-base)/base
+        return percent_diff >= sig
+    
+    #Find most common spacing
+    spacing = ident_spacing(peak_list)
+
+    #Start at first significant peak
+    start_i = 0
+    while not is_sig(some_list, peak_list[start_i], 0.3, spacing):
+        start_i += 1
+
+    i = start_i
+    sig_threshhold = 0.3
+    while i+1 < len(peak_list):
+        space_to_next = peak_list[i+1] - peak_list[i]
+        if space_to_next < floor(spacing):
+            if not is_sig(some_list, peak_list[i+1], sig_threshhold, spacing):
+                peak_list.remove(peak_list[i+1])
+            else:
+                #Move to next peak
+                i += 1
+        elif space_to_next > ceil(spacing):
+            n = 1
+            mult_spacing = [n*floor(spacing), n*ceil(spacing)]
+            is_mult = False
+            while not is_mult and mult_spacing[0] < space_to_next:
+                if mult_spacing[0] <= space_to_next and space_to_next <= mult_spacing[1]:
+                    is_mult = True
+                n += 1
+                mult_spacing = [n*floor(spacing), n*ceil(spacing)]
+            if is_mult:
+                n -= 1
+                new_positions = [int(round(peak_list[i]+j*(space_to_next/n))) for j in range(1,n)]
+                for pos in new_positions:
+                    peak_list.insert(i+1, pos)
+                    i += 1
+
+                #Move to next peak
+                i += 1
+            else:
+                peak_list.remove(peak_list[i+1])
+                print 'WARNING: found multiple broken fibers in a row.'
+        else:
+            print 'ENTERING PERFECT SPACING'
+            i += 1
+    return peak_list
+
+@fitstools.manage_dtype(with_header=True)
+def findFibers(some_fits):
+    data, header = some_fits
+    n = None
+    if header != None:
+        n = getFiberNum(header)
+    fitstools.display(data)
+    col_avgs = fitstools.colAvg(data)
+    fig, ax = plt.subplots()
+    ax.plot(col_avgs)
+     
+    print 'HERE!!!'
+    peaks = get_peaks(col_avgs, n)
+    peaks = improve_peak_spacing(col_avgs, peaks)
+    print len(peaks)
+    print 'LEAVING HERE!!!'
+    fig, ax = plt.subplots()
+    ax.plot(col_avgs)
+    ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
+    fig, ax = plt.subplots()
+    ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
     fSpacing = int(round(getFiberSpacing(some_fits)/2))
     print fSpacing, ':D:D:D'
 
