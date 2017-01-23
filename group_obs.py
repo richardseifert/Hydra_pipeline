@@ -1,17 +1,17 @@
-print 'groupObs importing glob'
+print 'group_obs importing glob'
 import glob
-print 'groupObs importing datetime'
+print 'group_obs importing datetime'
 from datetime import datetime
-print 'groupObs importing astropy.io.fits'
+print 'group_obs importing astropy.io.fits'
 from astropy.io import fits
-#print 'groupObs importing fitsFile'
+#print 'group_obs importing fitsFile'
 #import fitsFile
-print 'groupObs finished importing'
+print 'group_obs finished importing'
 
-class obsGroup:
-    def __init__(self, obj=[], flat=[], comp=[], zero=[]):
-        self.images = {'object' :list(obj), 'flat':list(flat), 'comp':list(comp), 'zero':list(zero)}
-    def addImage(self, im, imgtype):
+class obs_group:
+    def __init__(self, obj=[], flat=[], comp=[]):
+        self.images = {'object' :list(obj), 'flat':list(flat), 'comp':list(comp)}
+    def add_image(self, im, imgtype):
         try:
             self.images[imgtype].append(im)
         except KeyError:
@@ -24,7 +24,10 @@ def convert_timestr(s):
     return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S:%f')
 
 #group images with identical fiber pointings that were taken cronologically
-def groupObs(direc):
+def group_obs(direc):
+    #Declare fits header IMGTYPEs to ignore
+    ignore_types = ['zero']
+
     print 'GETTING FILES'
     #Get list of fits files in direc
     if direc[-1] != '/':
@@ -36,11 +39,11 @@ def groupObs(direc):
     fitsList = [fits.open(fpath) for fpath in fitsList]
 
     print 'SORTING FILES'
-    #Sort files chronologically by 
+    #Sort files chronologically by DATE-OBS 
     fitsList = sorted(fitsList, key=lambda f: convert_timestr(f[0].header['DATE-OBS']))
 
     pointings = []
-    pointings.append(obsGroup())
+    pointings.append(obs_group())
     prev_fiberConfig = ''
     for f in fitsList:
         h = f[0].header
@@ -50,9 +53,10 @@ def groupObs(direc):
             fiberConfig += h['SLFIB'+str(n)]
             n += 1
         if fiberConfig != prev_fiberConfig:
-            pointings.append(obsGroup())
-        pointings[-1].addImage(f, h['IMGTYPE'])
-        prev_fiberConfig = fiberConfig
+            pointings.append(obs_group())
+        if not h['IMGTYPE'] in ignore_types:
+            pointings[-1].add_image(f, h['IMGTYPE'])
+            prev_fiberConfig = fiberConfig
 
     for p in pointings:
         imgs = p.images
