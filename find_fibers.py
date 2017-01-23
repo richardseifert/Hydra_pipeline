@@ -14,12 +14,9 @@ print 'findFibers finished importing'
 from math import floor, ceil
 from scipy.optimize import curve_fit
 
-#Get the number of fibers in a fits object using
-#information from the fits header.
-#-----------------------------------------------
-# some_header can be either:
-#       fits.header.Header
-#       python dict or similar
+
+#Helper function to get the number of fibers in a fits object using
+# information from the fits header.
 #
 def getFiberNum(some_header):
     num_fibers = 1
@@ -31,6 +28,8 @@ def getFiberNum(some_header):
     num_fibers -= 1
     return num_fibers
 
+#Function that finds significant peaks in an array of data. Indices
+# of peaks are returned.
 def find_sig_peaks(some_list):
     threshhold = sum(some_list)/len(some_list)
     
@@ -41,13 +40,22 @@ def find_sig_peaks(some_list):
             peaks.append(i)
 
     return peaks
+
+#Function that finds the n highest peaks in an array of data.
+# Indicies of peaks are returned.
 def find_n_peaks(some_list, n):
     is_peak = lambda l, i: l[i-1] < l[i] and l[i] > l[i+1]
     peaks = [i for i in range(len(some_list))[1:-1] if is_peak(some_list, i)]
     n_high_peaks = sorted(peaks, key=lambda i: -some_list[i])[:n]
     return sorted(n_high_peaks)
+
+#Funciton for finding peaks that uses one of the two functions above,
+# depending on the arguments given.
 def get_peaks(some_list, n=None):
     return find_n_peaks(some_list, n) if n!=None else get_sig_peaks(some_list)
+
+#Function that identifies the most common spacing between items in a list.
+# Returns the weighted average of the two most frequenty occuring spacings.
 def ident_spacing(p_list):
     p_spacing = [p2-p1 for p1, p2 in zip(p_list[:-1], p_list[1:])]
     p_spacing_unique = list(set(p_spacing))
@@ -62,6 +70,9 @@ def ident_spacing(p_list):
     spacing = float(freq1*spacing1 + freq2*spacing2)/float(total_freq)
     return spacing
 
+#Function that determines whether or not a peak at index i is significant.
+# sig is the percent above the base level that the peak rises. sig=0.3 only
+# accepts peaks that are 30% larger than the base level or larger.
 def is_sig(alist, i, sig, spacing=3):
     low = int(round(i-spacing))
     if low < 0:
@@ -72,8 +83,9 @@ def is_sig(alist, i, sig, spacing=3):
     percent_diff = (alist[i]-base)/base
     return percent_diff >= sig
 
+#Function that modifies a list of peaks based on the knowledge that elements should be roughly evenly spaced.
+# The list of peaks should be sorted.
 def improve_peak_spacing(some_list, peak_list):
-    
     #Find most common spacing
     spacing = ident_spacing(peak_list)
 
@@ -119,22 +131,25 @@ def improve_peak_spacing(some_list, peak_list):
             i += 1
     return peak_list
 
+#Function that finds the center of a fiber as a function of y_pixel position.
+# The function also returns the width obtained from the column-averaged 
+# profile of the fiber.
 @fitstools.manage_dtype()
 def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
     spacing = int(round(ident_spacing(fiber_positions)))
     col_avgs = fitstools.colAvg(some_fits)
     fcenter_list = []
     approx_fcenter, fwidth = find_center_and_width(col_avgs, xpos, spacing)
-    print xpos, fwidth
     for row in some_fits:
         fcenter = list(row[xpos-fwidth:xpos+fwidth+1]).index(max(row[xpos-fwidth:xpos+fwidth+1]))+(xpos-fwidth)
         fcenter_list.append(fcenter)
     center = fit_to_func(lambda x,a,b,c,d,e: a*x**4+b*x**3+c*x**2+d*x+e, range(len(fcenter_list)), fcenter_list)
     fcenter_list = [int(round(center(i))) for i in range(len(fcenter_list))]
-    fig, ax = plt.subplots()
-    ax.scatter(range(len(fcenter_list)), fcenter_list)
     return fcenter_list, fwidth
 
+#Function that produces a mask array containing the positions of fibers in an image.
+# 0 indicates a pixel belonging to no fiber.
+# n indicates a pixel belonging to the nth fiber for n > 0
 @fitstools.manage_dtype()
 def get_fiber_mask(some_fits, fiber_positions):
     mask = np.zeros_like(some_fits)
@@ -143,7 +158,6 @@ def get_fiber_mask(some_fits, fiber_positions):
     for xpos in fiber_positions:
         fnum = list(fiber_positions).index(xpos)+1
         if not is_sig(col_avgs, xpos, 0.3, spacing):
-            print 'insig', xpos
             fcenter_list = [xpos for i in range(len(some_fits))]
             fwidth = 0
         else:
@@ -154,12 +168,21 @@ def get_fiber_mask(some_fits, fiber_positions):
             for w in range(fwidth):
                 mask[r][c+w] = fnum
                 mask[r][c-w] = fnum
-    fitstools.display(mask)
+    return mask
+
+#Function that fits the function, func, to the data x,y.
+# Returns a function, f, with the simple call, y = f(x).
+# Best-fit parameters of func are not
+# easily obtained afterwards.
 def fit_to_func(func, x, y):
     coeff, err = curve_fit(func, x, y)
     fit = lambda args: lambda x: func(x,*args)
-    return fit(coeff)
+    f = fit(coeff)
+    return f
 
+#Function for finding the center of a fiber and
+# determining the width that contains more than 
+# 99.5% of the total counts of the fiber.
 def find_center_and_width(some_list, pos, rad):
     l = list(some_list)
     low = l[pos-rad:pos].index(min(l[pos-rad:pos]))+(pos-rad)
@@ -184,6 +207,9 @@ def find_center_and_width(some_list, pos, rad):
     width = f_high-center
     return center, width
 
+#Function that takes a fits-like argument for an image with evenly spaced
+# fibers that are relatively bright, such as a flat field, and identifies
+# the positions of each fiber and returns a numbered mask array.
 @fitstools.manage_dtype(with_header=True)
 def findFibers(some_fits):
     data, header = some_fits
@@ -198,33 +224,11 @@ def findFibers(some_fits):
     peaks = get_peaks(col_avgs, n)
     peaks = improve_peak_spacing(col_avgs, peaks)
     spacing = int(round(ident_spacing(peaks)))
-    print len(peaks)
     fig, ax = plt.subplots()
     ax.plot(col_avgs)
     ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
     #fig, ax = plt.subplots()
     #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
 
-    get_fiber_mask(data, peaks)
-    #masks = []
-    #for i in peaks:
-    #    fSlice = col_avgs[i-spacing:i+spacing+1]
-    #    base = lambda n: (fSlice[-1]-fSlice[0])/(len(fSlice)-1)*n + fSlice[0]
-    #    fSlice = [fSlice[n] - base(n) for n in range(len(fSlice))]
-
-    #    area = lambda l, h: sum([float(fSlice[n]) for n in range(l, h+1)])
-    #    total = area(0, len(fSlice)-1)
-    #    ilow = (len(fSlice)-1)/2
-    #    ihigh = (len(fSlice)-1)/2
-    #    currentArea = 0
-    #    while currentArea/total < 0.995 and (ilow > 0 and ihigh < len(fSlice)-1):
-    #        if ihigh >= len(fSlice) or (ilow > 0 and fSlice[ilow-1] >= fSlice[ihigh+1]):
-    #            ilow -= 1
-    #        else:
-    #            ihigh += 1
-    #        currentArea = area(ilow, ihigh)
-    #    masks.append([i + (ilow-(len(fSlice)-1)/2), i + (ihigh-(len(fSlice)-1)/2)])
-    #    ax.axvline(masks[-1][0], color='red')
-    #    ax.axvline(masks[-1][1], color='red')
-    #return masks
-
+    mask = get_fiber_mask(data, peaks)
+    return mask

@@ -36,11 +36,9 @@ def manage_dtype(preserve=False, with_header=False):
             args = list(args)
             dtype_i = 2
             for i, arg in enumerate(args):
-                print arg, type(arg), ';D:D:Dsbsfd'
                 d, data, header = get_data_and_header(arg)
                 if d < dtype_i:
                     dtype_i = d
-                print with_header, ':D:D:D'
                 if with_header:
                     args[i] = [data, header]
                 else:
