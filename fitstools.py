@@ -144,3 +144,7 @@ def combine_helper(*args, **kwargs):
         raise ValueError('Unknown method' + str(method))
 
 
+def save_2darr(data, savepath):
+    p = fits.PrimaryHDU(data)
+    hdulist = fits.HDUList(p)
+    hdulist.writeto(savepath, clobber=True)
