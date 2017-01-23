@@ -143,8 +143,14 @@ def combine_helper(*args, **kwargs):
     else:
         raise ValueError('Unknown method' + str(method))
 
-
 def save_2darr(data, savepath):
     p = fits.PrimaryHDU(data)
     hdulist = fits.HDUList(p)
     hdulist.writeto(savepath, clobber=True)
+
+@manage_dtype()
+def mask_fits(some_fits, some_mask, maskval=1):
+    if some_fits.shape != some_mask.shape:
+        print 'Data and mask must be the same shape.'
+        raise ValueError
+    return np.where(some_mask == maskval, some_fits, 0) 
