@@ -1,16 +1,8 @@
-#print 'findFibers importing fitsFile'
-#import fitsFile
-print 'findFibers importing fitstools'
 import fitstools
-print 'findFibers importing astropy.io.fits'
 from astropy.io import fits
-print 'findFibers importing fitsFile'
 from scipy.optimize import minimize
-print 'findFibers importing fitsFile'
 import numpy as np
-print 'findFibers importing matplotlib.pyplot as plt'
 import matplotlib.pyplot as plt
-print 'findFibers finished importing'
 from math import floor, ceil
 from scipy.optimize import curve_fit
 
@@ -162,6 +154,7 @@ def get_fiber_mask(some_fits, fiber_positions):
             fwidth = 0
         else:
             fcenter_list, fwidth = fit_fcenter_fwidth(some_fits, fiber_positions, xpos)
+        fwidth = 3
         for r in range(len(mask)):
             c = fcenter_list[r]
             mask[r][c] = fnum
@@ -209,9 +202,9 @@ def find_center_and_width(some_list, pos, rad):
 
 #Function that takes a fits-like argument for an image with evenly spaced
 # fibers that are relatively bright, such as a flat field, and identifies
-# the positions of each fiber and returns a numbered mask array.
+# the positions of each fiber, returning a numbered mask array.
 @fitstools.manage_dtype(with_header=True)
-def findFibers(some_fits):
+def find_fibers(some_fits):
     data, header = some_fits
     n = None
     if header != None:

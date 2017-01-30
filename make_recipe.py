@@ -46,7 +46,6 @@ def get_use_fiber_nums(header, use_condition):
     n = 1
     k = 'SLFIB'+str(n)
     while k in header:
-        print k, header[k]
         if use_condition(header[k]):
             use_fiber_nums.append(n)
         n += 1

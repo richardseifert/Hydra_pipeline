@@ -1,11 +1,7 @@
-print 'fitstools importing numpy'
 import numpy as np
-print 'fitstools importing astropy.io.fits'
 from astropy.io import fits
-print 'fitstools importing matplotlib.pyplot'
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-print 'fitstools finished importing'
 plt.ion()
 
 def get_data_and_header(some_fits):
@@ -153,4 +149,4 @@ def mask_fits(some_fits, some_mask, maskval=1):
     if some_fits.shape != some_mask.shape:
         print 'Data and mask must be the same shape.'
         raise ValueError
-    return np.where(some_mask == maskval, some_fits, 0) 
+    return np.where(some_mask == maskval, some_fits, 0)

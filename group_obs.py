@@ -1,12 +1,6 @@
-print 'group_obs importing glob'
 import glob
-print 'group_obs importing datetime'
 from datetime import datetime
-print 'group_obs importing astropy.io.fits'
 from astropy.io import fits
-#print 'group_obs importing fitsFile'
-#import fitsFile
-print 'group_obs finished importing'
 
 class obs_group:
     def __init__(self, obj=[], flat=[], comp=[]):
@@ -35,17 +29,14 @@ def group_obs(direc):
     #Declare fits header IMGTYPEs to ignore
     ignore_types = ['zero']
 
-    print 'GETTING FILES'
     #Get list of fits files in direc
     if direc[-1] != '/':
         direc += '/'
     fitsList = glob.glob(direc+'*.fits')+glob.glob(direc+'*.fit')
 
-    print 'LOADING FILES'
     #Load fits files
     fitsList = [fits.open(fpath) for fpath in fitsList]
 
-    print 'SORTING FILES'
     #Sort files chronologically by DATE-OBS 
     fitsList = sorted(fitsList, key=lambda f: convert_timestr(f[0].header['DATE-OBS']))
 
