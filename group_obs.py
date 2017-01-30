@@ -16,6 +16,13 @@ class obs_group:
             self.images[imgtype].append(im)
         except KeyError:
             print 'Unrecognize d image type:',imgtype
+    def get_images(self, img_type=None):
+        if img_type == None:
+            imgs = []
+            for k in self.images.keys():
+                imgs.extend(self.images[k])
+            return imgs
+        return self.images[img_type]
 
 def convert_timestr(s):
     decimal_seconds = '.'+s.split('.')[-1]
