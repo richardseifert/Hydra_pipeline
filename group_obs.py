@@ -56,10 +56,4 @@ def group_obs(direc):
             pointings[-1].add_image(f, h['IMGTYPE'])
             prev_fiberConfig = fiberConfig
 
-    for p in pointings:
-        imgs = p.images
-        for k in imgs.keys():
-            print k, len(imgs[k])
-        print
-
     return pointings

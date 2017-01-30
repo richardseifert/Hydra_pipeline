@@ -42,5 +42,4 @@ if __name__ == '__main__':
         make_recipe(loc, 'recipes/'+direc+'.recipe')
 
     if command == 'flat':
-        print 'call process_flat'
         process.process_flat(direc)

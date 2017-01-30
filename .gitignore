@@ -4,10 +4,11 @@ info_files
 trash
 plots_*
 
+recipes/*
+!recipes/.gitkeep
 indata/*
 !indata/test_data
 calib/*
 !calib/.gitkeep
 outdata/*
 !outdata/.gitkeep
-
