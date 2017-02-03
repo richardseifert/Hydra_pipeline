@@ -5,6 +5,11 @@ from matplotlib.colors import LogNorm
 plt.ion()
 
 def get_data_and_header(some_fits):
+    if type(some_fits) == str:
+        dtype = 0
+        image = fits.open(some_fits)
+        image_data = image[0].data
+        image_header = image[0].header
     if type(some_fits) == fits.hdu.hdulist.HDUList:
         dtype = 0
         image_data = some_fits[0].data
@@ -22,22 +27,35 @@ def get_data_and_header(some_fits):
                 image_header = fits.PrimaryHDU(image_data).header
         except AttributeError:
             pass
-    return [dtype, image_data, image_header]
-def manage_dtype(preserve=False, with_header=False):
+
+    image_wcs = None
+    try:
+        image_wcs = wcs.WCS(image_header)
+    except:
+        pass
+
+    return [dtype, image_data, image_header, image_wcs]
+
+def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=False):
     dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
               lambda data: fits.PrimaryHDU(data),
               lambda data: data]
     def decorator(f):
-        def wrapper(*args, **kwargs):
+        def wrapper(use_args, *args, **kwargs):
             args = list(args)
+            if use_args == 'all':
+                use_args = [i for i in range(len(args))]
             dtype_i = 2
-            for i, arg in enumerate(args):
-                d, data, header = get_data_and_header(arg)
+            for i in use_args:
+                d, data, header, wcs = get_data_and_header(args[i])
                 if d < dtype_i:
                     dtype_i = d
+                args[i] = [data]
                 if with_header:
-                    args[i] = [data, header]
-                else:
+                    args[i].append(header)
+                if with_wcs:
+                    args[i].append(wcs)
+                if not (with_header or with_wcs):
                     args[i] = data
                 i+=1
             
@@ -59,7 +77,7 @@ def manage_dtype(preserve=False, with_header=False):
                     except AttributeError:
                         pass
             return res
-        return wrapper
+        return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
     return decorator
     
 @manage_dtype()
