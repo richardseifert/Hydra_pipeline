@@ -21,6 +21,7 @@ def flat_dorecipe(r, dname):
     rtype = info[1]
     filenames = info[2].split(' ')
     use_fibers = [int(f_num) for f_num in info[3].split(' ')]
+    print use_fibers, ':D:'
 
     #Make directory in calib for this group number
     group_dir = 'calib/'+dname+'/group'+group_num+'/'
@@ -32,5 +33,7 @@ def flat_dorecipe(r, dname):
     master_flat.writeto(group_dir+'/master_flat.fits', clobber=True)
 
     #Find fibers, make fiber mask, save to directory
-    fiber_mask = find_fibers(master_flat)
-    save_2darr(fiber_mask, group_dir+'fiber_mask.fits')
+    print use_fibers, '2312dsx'
+    fiber_mask = find_fibers(master_flat, use_fibers)
+    fits.writeto(group_dir+'fiber_mask.fits', fiber_mask, clobber=True)
+
