@@ -1,4 +1,5 @@
 *.pyc
+*.swp
 testing_*
 info_files
 trash
