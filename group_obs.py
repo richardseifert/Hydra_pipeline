@@ -41,7 +41,6 @@ def group_obs(direc):
     fitsList = sorted(fitsList, key=lambda f: convert_timestr(f[0].header['DATE-OBS']))
 
     pointings = []
-    pointings.append(obs_group())
     prev_fiberConfig = ''
     for f in fitsList:
         h = f[0].header
