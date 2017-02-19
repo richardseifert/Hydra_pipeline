@@ -27,8 +27,8 @@ def find_sig_peaks(some_list):
     
     #Identify significant peaks
     peaks = []
-    for i in range(len(colAvgs))[1:-1]:
-        if colAvgs[i] > threshhold and colAvgs[i-1] < colAvgs[i] and colAvgs[i+1] < colAvgs[i]:
+    for i in range(len(col_avgs))[1:-1]:
+        if col_avgs[i] > threshhold and colAvgs[i-1] < colAvgs[i] and colAvgs[i+1] < colAvgs[i]:
             peaks.append(i)
 
     return peaks
@@ -129,7 +129,7 @@ def improve_peak_spacing(some_list, peak_list):
 @fitstools.manage_dtype()
 def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
     spacing = int(round(ident_spacing(fiber_positions)))
-    col_avgs = fitstools.colAvg(some_fits)
+    col_avgs = fitstools.col_avg(some_fits)
     fcenter_list = []
     approx_fcenter, fwidth = find_center_and_width(col_avgs, xpos, spacing)
     for row in some_fits:
@@ -146,11 +146,10 @@ def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
 def get_fiber_mask(some_fits, fiber_positions, use_fibers):
     mask = np.zeros_like(some_fits)
     spacing = int(round(ident_spacing(fiber_positions)))
-    col_avgs = fitstools.colAvg(some_fits)
-    print use_fibers, ';D:S'
+    col_avgs = fitstools.col_avg(some_fits)
     for fnum in use_fibers:
-        #fnum = list(fiber_positions).index(xpos)+1
-        xpos = fiber_positions[fnum-1]
+        f_indx = fnum-2
+        xpos = fiber_positions[f_indx]
         if not is_sig(col_avgs, xpos, 0.3, spacing):
             fcenter_list = [xpos for i in range(len(some_fits))]
             fwidth = 0
@@ -207,13 +206,12 @@ def find_center_and_width(some_list, pos, rad):
 # the positions of each fiber, returning a numbered mask array.
 @fitstools.manage_dtype(use_args=[0], with_header=True)
 def find_fibers(some_fits, use_fibers):
-    print use_fibers, '32fd'
     data, header = some_fits
     n = None
     if header != None:
         n = getFiberNum(header)
     fitstools.display(data)
-    col_avgs = fitstools.colAvg(data)
+    col_avgs = fitstools.col_avg(data)
     fig, ax = plt.subplots()
     ax.plot(col_avgs)
      
@@ -225,6 +223,5 @@ def find_fibers(some_fits, use_fibers):
     ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
     #fig, ax = plt.subplots()
     #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
-    print use_fibers, '121'
     mask = get_fiber_mask(data, peaks, use_fibers)
     return mask
