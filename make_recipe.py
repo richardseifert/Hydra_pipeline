@@ -4,7 +4,15 @@ def make_recipe(direc, savepath):
     recipe = open(savepath, 'w')
     recipe.write('#GROUP_NUM,IMAGE_TYPE,FILE_NAMES,FIBER_NUMBERS\n')
 
-    groups = group_obs(direc)
+
+
+    biases, groups = group_obs(direc)
+    #List bias info
+    file_names = [f.filename().split('/')[-1] for f in biases]
+    recipe.write('-1,zero,'+' '.join(file_names)+',\n')
+    for f in biases:
+        f.close()
+
     for i,g in enumerate(groups):
         group_num = str(i+1)
         if len(g.get_images()) == 0:
@@ -35,9 +43,11 @@ def make_recipe(direc, savepath):
         #List object info
         img_type = 'object'
         file_names = [f.filename().split('/')[-1] for f in g.images[img_type]]
-        use_fiber = lambda slfib_s: len(slfib_s.split()) > 1 and slfib_s.split()[1] in ['1'] #0 is Sky, 3 is Random
+        use_fiber = lambda slfib_s: len(slfib_s.split()) > 1 and slfib_s.split()[1] in ['1'] #1 is Object
         fiber_nums = get_use_fiber_nums(sample_header, use_fiber)
         recipe.write(group_num+','+img_type+','+' '.join(file_names)+','+' '.join([str(n) for n in fiber_nums])+'\n')
+
+        g.close_files()
 
     recipe.close()
 
