@@ -17,6 +17,10 @@ class obs_group:
                 imgs.extend(self.images[k])
             return imgs
         return self.images[img_type]
+    def close_files(self):
+        for k in self.images.keys():
+            for f in self.images[k]:
+                f.close()
 
 def convert_timestr(s):
     decimal_seconds = '.'+s.split('.')[-1]
@@ -24,11 +28,8 @@ def convert_timestr(s):
     s = s.split('.')[0]+':'+micro_seconds
     return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S:%f')
 
-#group images with identical fiber pointings that were taken cronologically
+#group images with identical fiber pointings that were taken chronologically
 def group_obs(direc):
-    #Declare fits header IMGTYPEs to ignore
-    ignore_types = ['zero']
-
     #Get list of fits files in direc
     if direc[-1] != '/':
         direc += '/'
@@ -40,6 +41,7 @@ def group_obs(direc):
     #Sort files chronologically by DATE-OBS 
     fitsList = sorted(fitsList, key=lambda f: convert_timestr(f[0].header['DATE-OBS']))
 
+    biases = []
     pointings = []
     prev_fiberConfig = ''
     for f in fitsList:
@@ -51,8 +53,11 @@ def group_obs(direc):
             n += 1
         if fiberConfig != prev_fiberConfig:
             pointings.append(obs_group())
-        if not h['IMGTYPE'] in ignore_types:
+        if h['IMGTYPE'] == 'zero':
+            biases.append(f)
+        else:
             pointings[-1].add_image(f, h['IMGTYPE'])
             prev_fiberConfig = fiberConfig
 
-    return pointings
+    return biases, pointings
+
