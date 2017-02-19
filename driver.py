@@ -27,9 +27,7 @@ def ensure_path(path):
     if not found:
         print "Path does not exist."
         return path
-    print tmp_path, dirs_to_make[:-1]
     for dirname in dirs_to_make[:-1]:
-        print dirname
         os.makedirs(dirname)
     return path
 
@@ -40,6 +38,10 @@ if __name__ == '__main__':
     
     if command == 'make-recipe':
         make_recipe(loc, 'recipes/'+direc+'.recipe')
-
-    if command == 'flat':
+    elif command == 'full-reduce':
+        process.process_bias(direc)
+        process.process_flat(direc)
+    elif command == 'bias':
+        process.process_bias(direc)
+    elif command == 'flat':
         process.process_flat(direc)
