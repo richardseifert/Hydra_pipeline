@@ -36,6 +36,34 @@ def get_data_and_header(some_fits):
 
     return [dtype, image_data, image_header, image_wcs]
 
+def get_dtype(*list_of_fits, **kwargs):
+    lowest=True
+    if 'lowest' in kwargs:
+        lowest=kwargs['lowest']
+    dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
+              lambda data: fits.PrimaryHDU(data),
+              lambda data: data]
+    dtype_i = 0 if lowest else 2
+    for some_fits in list_of_fits:
+        if type(some_fits) == str:
+            dtype = 0
+        if type(some_fits) == fits.hdu.hdulist.HDUList:
+            dtype = 0
+        elif type(some_fits) == fits.hdu.image.PrimaryHDU:
+            dtype = 1
+        else:
+            dtype = 2
+            image_data = some_fits
+            try:
+                assert len(np.asarray(image_data).shape) == 2
+            except:
+                raise ValueError('Got an object that is not fits-like') 
+        if lowest:
+            dtype_i = min([dtype_i, dtype])
+        else:
+            dtype_i = max([dtype_i, dtype])
+    return dtypes[dtype_i]
+
 def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=False):
     dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
               lambda data: fits.PrimaryHDU(data),
@@ -90,12 +118,12 @@ def display(some_fits, ax=None):
     return ax 
 
 @manage_dtype()
-def rowAvg(some_fits):
-    return [np.mean(some_fits[i,:]) for i in range(len(some_fits))]
+def row_avg(some_fits):
+    return [np.sum(some_fits[i,:]) for i in range(len(some_fits))]
 
 @manage_dtype()
-def colAvg(some_fits):
-        return [np.mean(some_fits[:,i]) for i in range(len(some_fits[0]))]
+def col_avg(some_fits):
+        return [np.sum(some_fits[:,i]) for i in range(len(some_fits[0]))]
 
 @manage_dtype(preserve=True)
 def slice(some_fits, xlo=None, xhi=None, ylo=None, yhi=None):
@@ -132,8 +160,12 @@ def get_common_header(*args):
 #Change a fits header in place to the header given.
 def assign_header(some_fits, header):
     if type(some_fits) == fits.hdu.hdulist.HDUList:
+        data = some_fits[0].data
+        return fits.HDUList(fits.PrimaryHDU(data, header))
         some_fits[0].header = header
     elif type(some_fits) == fits.hdu.image.PrimaryHDU:
+        data = some_fits.data
+        return fits.PrimaryHDU(data, header)
         some_fits.header = header
     else:
         raise TypeError(str(some_fits) + 'is not an appropriate object for fits header assignment.')
@@ -141,10 +173,12 @@ def assign_header(some_fits, header):
 def combine(*args, **kwargs):
     comb_fits = combine_helper(*args, **kwargs)
     list_of_fits = args
-    assign_header(comb_fits, get_common_header(*list_of_fits))
+    dtype = get_dtype(list_of_fits)
+    comb_fits = dtype(comb_fits)
+    comb_fits = assign_header(comb_fits, get_common_header(*list_of_fits))
     return comb_fits
 
-@manage_dtype(preserve=True)
+@manage_dtype()
 def combine_helper(*args, **kwargs):
     method = 'median'
     if 'method' in kwargs:
@@ -153,9 +187,12 @@ def combine_helper(*args, **kwargs):
     list_of_fits = args
 
     if method == 'median':
-        return np.median(list_of_fits, axis=0)
+        comb_img = np.median(list_of_fits, axis=0)
+    elif method == 'mean':
+        comb_img = np.mean(list_of_fits, axis=0)
     else:
-        raise ValueError('Unknown method' + str(method))
+        raise ValueError('Unknown method ' + str(method))
+    return comb_img
 
 def save_2darr(data, savepath):
     p = fits.PrimaryHDU(data)
@@ -165,6 +202,5 @@ def save_2darr(data, savepath):
 @manage_dtype()
 def mask_fits(some_fits, some_mask, maskval=1):
     if some_fits.shape != some_mask.shape:
-        print 'Data and mask must be the same shape.'
-        raise ValueError
+        raise ValueError('Data and mask must be the same dimensions')
     return np.where(some_mask == maskval, some_fits, 0)
