@@ -45,3 +45,5 @@ if __name__ == '__main__':
         process.process_bias(direc)
     elif command == 'flat':
         process.process_flat(direc)
+    elif command == 'thar':
+        process.process_thar(direc)
