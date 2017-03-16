@@ -10,16 +10,31 @@ from scipy.optimize import curve_fit
 from mpfit import mpfit
 
 
-def get_peaks(some_list, pthreshhold):
-    is_peak = lambda i: some_list[i-1] <= some_list[i] and some_list[i+1] < some_list[i]
-
-    thresh = np.percentile(some_list, pthreshhold)
-    above_threshhold = lambda i, t: some_list[i] > t
-
-    peaks_i = [i for i in range(1, len(some_list)-1) if is_peak(i) and above_threshhold(i, thresh)]
-    return peaks_i
-
 def get_peak_center(xlist, ylist, i, prec=0.001):
+    '''
+    Use a cubic spline to approximate center of a peak. Given a list of x valies
+    and a list of y values, this function returns the x value corresponding to
+    the peak in y near the index i.
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    xlist: An array of x values
+
+    ylist: An array of y values
+
+    i: An index of xlist and ylist that is near the desired peak.
+    
+    prec: Optional. The precision of the result.
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    
+    center_x: The x value corresponding to the peak y value in the region near
+              the index i.
+
+    center_y: The height of this peak.
+    '''
+
     #Take the region of xlist and ylist surrounding the peak at index i
     low = i-1
     while low-1 >= 0 and ylist[low] > ylist[low-1]:
@@ -32,7 +47,6 @@ def get_peak_center(xlist, ylist, i, prec=0.001):
         low -= 1
         high += 1
     
-    print low, high
     region_x = xlist[low:high+1]
     region_y = ylist[low:high+1]
 
@@ -79,7 +93,8 @@ def wvlsol(comp, fiber_mask, use_fibers):
         linelist = thar_peaks[:,0]
 
     #use_fibers = [use_fibers[6]]
-    use_fibers = [7, 15, 18, 70, 83, 91, 96, 97, 98]
+    use_fibers = [18, 70, 83, 91, 96, 97, 98] + [7, 15]
+    use_fibers = [70]
     for fnum in use_fibers:
         print 'Fiber # '+str(fnum)
         fiber = mask_fits(comp, fiber_mask, fnum)
@@ -96,26 +111,54 @@ def wvlsol(comp, fiber_mask, use_fibers):
         ax_aft.plot(line_list_wvl, line_list_counts*(max(comp_counts)/max(line_list_counts)), color='red')
         ax_aft.plot(comp_wvl, comp_counts)
 
-def fiber_wvlsol(pix, counts, linelist, template_wvlsol, plot=True):
-    std, peaks_pix, peaks_counts = fit_ngaussian(pix, counts, 25)
-    peaks_pix, peaks_wvl = match_peaks(peaks_pix, linelist, template_wvlsol)
-    print len(peaks_pix), 'lines used.'
-    coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
-
-    if plot:
+def fiber_wvlsol(pix, counts, linelist, template_wvlsol, npeaks = 20, plot=True):
+    ##REMOVE COSMIC RAYS EVENTUALLY
+    pix, counts = remove_cosmic(pix, counts, 5000.0)
+    std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks)
+    #start_n = min([5, npeaks])
+    #n = start_n+1 # I'm thinking of trying something fancy where I test
+    #                solutions using different numbers of lines too see which
+    #                is the best.
+    n = npeaks #This line is temperary until thing aboove works.
+    while n <= npeaks:
+        peaks_pix, peaks_wvl = match_peaks(npeaks_pix[:n], linelist, template_wvlsol)
+        print len(peaks_pix), 'lines used out of '+str(n)+'.'
+        coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
-        fig, ax = plt.subplots()
-        ax.set_title('wvlsol')
-        ax.set_xlabel('Y_Pixel')
-        ax.set_ylabel('Wavelength ($\AA$)')
-        ax.scatter(peaks_pix, peaks_wvl)
-        pixfit = np.linspace(min(pix), max(pix), 10000)
-        countsfit = wsol(pixfit)
-        ax.plot(pixfit, countsfit)
+        rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
+        print n, rsqrd/len(peaks_pix)
+        n += 1
+
+        if plot:
+            fig, ax = plt.subplots()
+            ax.set_title('wvlsol')
+            ax.set_xlabel('Y_Pixel')
+            ax.set_ylabel('Wavelength ($\AA$)')
+            ax.scatter(peaks_pix, peaks_wvl)
+            pixfit = np.linspace(min(pix), max(pix), 10000)
+            countsfit = wsol(pixfit)
+            ax.plot(pixfit, countsfit)
 
     return coeffs
 
 def fit_poly(x, y, n):
+    '''
+    Fit an n-degree polynomial to the data (x, y).
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    x: An array of x values.
+
+    y: An array of y values.
+
+    n: The degree of the fit.
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    coeff: An n+1 length array of the coefficients of the best-fit polynomial.
+           Starting with the coefficiant of x^n and ending with the coefficient
+           of x^0.
+    '''
     polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
     x = np.array(x)
     y = np.array(y)
@@ -128,15 +171,58 @@ def fit_poly(x, y, n):
     return coeff
 
 
-def res_sqr(peaks_wvl, peaks_pix, wsol):
-    r = 0
-    for pp in peaks_pix:
-        w = wsol(pp)
-        r_sqrds = [(w-pw)**2 for pw in peaks_wvl]
-        r+=min(r_sqrds)
-    return r
+def min_res_sqr(x, y, func):
+    '''
+    A function which returns the lowest possible residuals squared
+    of a function using two unordered lists x and y
+
+    ARGUMENTS:
+    ---------yy-------------------------------------------------------------------
+    x: An array of x values.
+
+    y: An array of y values.
+
+    func: A unary function relating x and y.
+
+    **Note. x and y need not be ordered with respect to eachother (y[0] does not
+      need to correspond to x[0]). They don't even need to be the same length.**
+
+    RETURNS:  
+    ----------------------------------------------------------------------------
+    min_r_squared: The smallest residuals squared between x and y through func.
+                   Obtained by summing the difference squared between func(x[i]) and the
+                   nearest y for every value of x.
+    '''
+    min_r_sqrd = 0
+    for xval in x:
+        ymod = func(xval)
+        r_sqrds = [(ymod-yval)**2 for yval in y]
+        min_r_sqrd+=min(r_sqrds)
+    return min_r_sqrd
+
 def match_peaks(peaks_pix, peaks_wvl, template_wvlsol):
-    r_sqared = lambda offset: res_sqr(peaks_wvl, peaks_pix, lambda p: template_wvlsol(p)+offset)
+    '''
+    A function that attempts to match peaks found in puxel space to known peaks
+    in wavelength space.
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    peaks_pix: An array of the locations of peaks in pixel space.
+
+    peaks_wvl: An array of the locations of peaks in wavelength space.
+
+    **Note. These two arrays do not need to be the same length. This algorithm
+    works best if there are more peaks in peaks_wvl than there are in peaks_pix.
+
+    template_wvlsol: A function that roughly approximates the transformation
+    pixel space to wavelength space.
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    Two lists; one with pixel positions of peaks and the other with
+    corresponding wavelength positions of peaks.
+    '''
+    r_sqared = lambda offset: min_res_sqr(peaks_pix, peaks_wvl, lambda p: template_wvlsol(p)+offset)
     offset = minimize(r_sqared, x0=0).x[0]
     print offset, 'OFFSET'
     wsol = lambda p: template_wvlsol(p)+offset
@@ -168,14 +254,51 @@ def match_peaks(peaks_pix, peaks_wvl, template_wvlsol):
     return np.asarray(pix), np.asarray(wvl)
     
 
-
-
-
 def make_gaussian(x, amp, mu, sig):
+    '''
+    A function that returns a one-dimensional gaussian of a given mean,
+    standard deviation, and amplitude over a given domain.
+    
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    x: An array of x values for the 1D gaussian.
+
+    amp: The amplitude of the gaussian.
+
+    mu: The mean of the gaussian.
+
+    sig: The standard deviation of the gaussian.
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    An array of y values from the gaussian corresponding to the x values given
+    in x.
+    '''
     gauss = lambda x: amp*np.exp(-1/2*((x-mu)/(sig))**2)
     return np.asarray([gauss(x_val) for x_val in x])
 
 def make_ngaussian(x, p):
+    '''
+    A funciton the returns n one-dimensional gaussians of a given standard
+    deviation and given means and amplitudes over a given domain.
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    x: An array of x values for the gaussians.
+
+    p: An array of gaussian parameters:
+        p[0]      - The single standard deviation for all gaussians.
+        p[odd_i]  - The amplitudes of each gaussian.
+        p[even_i] - The means of each gaussian.
+
+        p = [std, amp1, mean1, amp2, mean2, amp3, mean3, ... , ampn, meann]
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    An array of y values attained from summing all of the gaussians at each of
+    the corresponding x values.
+    '''
     sig = p[0]
     amp = [p[i] for i in range(len(p)) if i%2==1]
     mu = [p[i] for i in range(1, len(p)) if i%2==0]
@@ -187,6 +310,25 @@ def make_ngaussian(x, p):
     return y_model
 
 def ngaussian_funct(p, xdata, ydata, fjac=None):
+    '''
+    A function that mpfit can digest which generates ngaussians when fitting
+    with mpfit.
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    p: The same array of gaussian arguments that make_ngaussian accepts.
+
+    xdata: An array of x values for the data being fit.
+
+    ydata: An array of y values for the data being fit.
+
+    fjac: Something that mpfit needs, but is never used.
+
+    RETURNS:
+    ----------------------------------------------------------------------------
+    A status (always success) and an array of "deviates" (residuals) between the
+    data and the ngaussian that mpfit uses when fitting.
+    '''
     ymodel = make_ngaussian(xdata, p)
     deviates = [ym-yd for ym,yd in zip(ymodel, ydata)]
     deviates = np.asarray(deviates)
@@ -195,10 +337,22 @@ def ngaussian_funct(p, xdata, ydata, fjac=None):
     return [status, deviates] #Deviates needs to be a numpy array!!
 
 def find_n_peaks(xdat, ydat, num_peaks):
-    #yfit = interp1d(xdat, ydat, kind='cubic')(xdat)
-    peak_i_list = [i for i in range(1,len(ydat)-1) if ydat[i] > ydat[i-1] and ydat[i] > ydat[i+1]]
-    peak_xvals = np.asarray([xdat[i] for i in peak_i_list])
-    peak_yvals = np.asarray([ydat[i] for i in peak_i_list])
+    '''
+    A function that finds a specified number of peaks in one-dimensional data.
+    Nothing fancy. A peak is defined by:
+                ydata[i] > ydata[i-1] and ydata[i] > ydata[i+1]
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    xdata: An array of x values.
+
+    ydata: An array of y values.
+
+    num_peaks: The desired number of peaks to find.
+    '''
+    peak_i_list = [i for i in range(1,len(ydata)-1) if ydata[i] > ydata[i-1] and ydata[i] > ydata[i+1]]
+    peak_xvals = np.asarray([xdata[i] for i in peak_i_list])
+    peak_yvals = np.asarray([ydata[i] for i in peak_i_list])
     sort_i = np.argsort(-peak_yvals)
     peak_xvals = peak_xvals[sort_i]
     peak_yvals = peak_yvals[sort_i]
@@ -206,6 +360,24 @@ def find_n_peaks(xdat, ydat, num_peaks):
     return peak_xvals[:num_peaks], peak_yvals[:num_peaks]
 
 def fit_ngaussian(xdata, ydata, n, plot=True):
+    '''
+    A function that fits n gaussians to some data. Data can be fit quickly by
+    only relying on a cubic spline to find peak centers or data can be fit more
+    accurately with mpfit.
+
+    ARGUMENTS:
+    ----------------------------------------------------------------------------
+    xdata: An array of x values.
+
+    ydata: An array of y values.
+
+    n: The number of peaks to fit.
+
+    fast: boolean. True for fast method, False for accurate method. Default is
+          False.
+          
+    plot: Boolean of whether or not to plot things.
+    '''
     peak_x, peak_y = find_n_peaks(xdata, ydata, n)
     for i in range(len(peak_x)):
         peak_i = np.where(xdata==peak_x[i])[0][0]
@@ -213,6 +385,7 @@ def fit_ngaussian(xdata, ydata, n, plot=True):
         peak_x[i] = px
         peak_y[i] = py
     p0 = [1.0] #Initial guess of standard deviation of gaussians.
+               # Fit this initial standard deviation in the future.
     for x, y in zip(peak_x, peak_y):
         p0.append(y)
         p0.append(x)
