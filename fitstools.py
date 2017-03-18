@@ -200,7 +200,20 @@ def save_2darr(data, savepath):
     hdulist.writeto(savepath, clobber=True)
 
 @manage_dtype()
-def mask_fits(some_fits, some_mask, maskval=1):
+def mask_fits(some_fits, some_mask, maskval=1, reshape=False):
+    if reshape:
+        return mask_fits_reshape(some_fits, some_mask, maskval)
+
     if some_fits.shape != some_mask.shape:
         raise ValueError('Data and mask must be the same dimensions')
     return np.where(some_mask == maskval, some_fits, 0)
+
+def mask_fits_reshape(some_fits, some_mask, maskval=1):
+    result = []
+    for row in range(len(some_mask)):
+        result.append([])
+        for column in range(len(some_mask[row])):
+            if some_mask[row][column] == maskval:
+                result[row].append(some_fits[row][column])
+    result = np.asarray(result)
+    return result
