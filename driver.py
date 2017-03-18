@@ -41,9 +41,13 @@ if __name__ == '__main__':
     elif command == 'full-reduce':
         process.process_bias(direc)
         process.process_flat(direc)
+        process.process_thar(direc)
+        process.process_sky(direc)
     elif command == 'bias':
         process.process_bias(direc)
     elif command == 'flat':
         process.process_flat(direc)
     elif command == 'thar':
         process.process_thar(direc)
+    elif command == 'sky':
+        process.process_sky(direc)

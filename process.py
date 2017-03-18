@@ -5,6 +5,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
+from extract_spectra import extract
 from sys import stdout
 
 #Define suffixes for bias-corrected and throghput-corrected images.
@@ -101,6 +102,8 @@ def flat_dorecipe(r, dname, recipe):
     flats = [fits.open(group_dir+'/'+filename) for filename in filenames]
     master_flat = combine(*flats)
     master_flat.writeto(group_dir+'/master_flat.fits', clobber=True)
+    for flat in flats:
+        flat.close()
 
     #Find fibers, make fiber mask, save to directory
     fiber_mask = find_fibers(master_flat, use_fibers)
@@ -133,12 +136,11 @@ def process_thar(dname, recipe=None, output=stdout):
         output.write('Processing '+dname+' thar: '+str(i+1)+'/'+str(num_r))
         output.flush()
         thar_dorecipe(r, dname)
-    output.write('n')
+    output.write('\n')
 
 def thar_dorecipe(r, dname):
     info = r.split(',')
     group_num = info[0]
-    group_dir = 'calib/'+dname+'/'+group_num
     rtype = info[1]
     recipe_filenames = info[2].split(' ')
     filenames = [fname.split('.')[0]+bc_suffix+'.fits' for fname in recipe_filenames]
@@ -159,5 +161,49 @@ def thar_dorecipe(r, dname):
        comp[0].data = comp[0].data / throughput_map
        new_fname = fname.split(bc_suffix)[0]+tc_suffix+'.fits'
        comp.writeto(group_dir+'/'+new_fname, clobber=True)
-       wvlsol(comp, fiber_mask, use_fibers)
-       exit()
+       wvlsol_map = wvlsol(comp, fiber_mask, use_fibers)
+       fits.writeto(group_dir+'/wvlsol.fits', wvlsol_map, clobber=True)
+
+def process_sky(dname, recipe=None, output=stdout):
+    sky_recipes = get_recipes(dname, recipe, rtype='sky')
+
+    num_r = len(sky_recipes)
+    for i,r in enumerate(sky_recipes):
+        output.write('Processing '+dname+' sky: '+str(i+1)+'/'+str(num_r))
+        output.flush()
+        sky_dorecipe(r, dname)
+    output.write('\n')
+
+def sky_dorecipe(r, dname):
+    info = r.split(',')
+    group_num = info[0]
+    rtype = info[1]
+    recipe_filenames = info[2].split(' ')
+    filenames = [fname.split('.')[0]+bc_suffix+'.fits' for fname in recipe_filenames]
+    use_fibers = [int(f_num) for f_num in info[3].split(' ')]
+
+    #Make directory in calib for this group number
+    group_dir = 'calib/'+dname+'/group'+group_num
+    ensure_path(group_dir+'/')
+
+    fm = fits.open(group_dir+'/fiber_mask.fits')
+    fiber_mask = fm[0].data
+    fm.close()
+
+    ws = fits.open(group_dir+'/wvlsol.fits')
+    wvlsol_map = ws[0].data
+    ws.close()
+
+    #Make master sky frame
+    skys = [fits.open(group_dir+'/'+filename) for filename in filenames]
+    master_sky = combine(*skys)
+    master_sky.writeto(group_dir+'/master_sky.fits', clobber=True)
+    for sky in skys:
+        sky.close()
+
+    for fnum in use_fibers:
+        extract(fiber_mask, fnum, master_sky, wvlsol_map)
+
+
+def sky_obj_dorecipe(r, dname):
+    pass 
