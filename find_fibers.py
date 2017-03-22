@@ -70,7 +70,6 @@ def is_sig(alist, i, sig, spacing=3):
     if low < 0:
         low = 0
     high = int(round(i+spacing))
-
     base = min(alist[low:high])
     percent_diff = (alist[i]-base)/base
     return percent_diff >= sig
@@ -128,7 +127,7 @@ def improve_peak_spacing(some_list, peak_list):
 # profile of the fiber.
 @fitstools.manage_dtype()
 def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
-    spacing = int(round(ident_spacing(fiber_positions)))
+    spacing = abs(int(round(ident_spacing(fiber_positions))))
     col_avgs = fitstools.col_avg(some_fits)
     fcenter_list = []
     approx_fcenter, fwidth = find_center_and_width(col_avgs, xpos, spacing)
@@ -145,7 +144,7 @@ def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
 @fitstools.manage_dtype()
 def get_fiber_mask(some_fits, fiber_positions, use_fibers):
     mask = np.zeros_like(some_fits)
-    spacing = int(round(ident_spacing(fiber_positions)))
+    spacing = abs(int(round(ident_spacing(fiber_positions))))
     col_avgs = fitstools.col_avg(some_fits)
     for fnum in use_fibers:
         f_indx = fnum-2
@@ -223,5 +222,6 @@ def find_fibers(some_fits, use_fibers):
     ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
     #fig, ax = plt.subplots()
     #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
+    peaks = peaks[::-1] #reversed order is the order they appear on the chip.
     mask = get_fiber_mask(data, peaks, use_fibers)
     return mask
