@@ -51,3 +51,5 @@ if __name__ == '__main__':
         process.process_thar(direc)
     elif command == 'sky':
         process.process_sky(direc)
+    elif command == 'target':
+        process.process_target(direc)

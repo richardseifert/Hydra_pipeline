@@ -157,7 +157,7 @@ def get_common_header(*args):
     
     return new_header
 
-#Change a fits header in place to the header given.
+#Change a fits header NOT in place to the header given.
 def assign_header(some_fits, header):
     if type(some_fits) == fits.hdu.hdulist.HDUList:
         data = some_fits[0].data
