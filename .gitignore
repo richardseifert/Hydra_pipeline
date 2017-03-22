@@ -3,7 +3,9 @@
 testing_*
 info_files
 trash
-plots_*
+plots*
+stuff/
+*.tar
 
 recipes/*
 !recipes/.gitkeep
