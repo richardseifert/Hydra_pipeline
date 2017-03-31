@@ -39,17 +39,23 @@ if __name__ == '__main__':
     if command == 'make-recipe':
         make_recipe(loc, 'recipes/'+direc+'.recipe')
     elif command == 'full-reduce':
-        process.process_bias(direc)
+        ensure_path('calib/'+direc+'/')
         process.process_flat(direc)
         process.process_thar(direc)
         process.process_sky(direc)
+        process.process_target(direc)
     elif command == 'bias':
+        ensure_path('calib/'+direc+'/')
         process.process_bias(direc)
     elif command == 'flat':
+        ensure_path('calib/'+direc+'/')
         process.process_flat(direc)
     elif command == 'thar':
-        process.process_thar(direc)
+        ensure_path('calib/'+direc+'/')
+        process.process_thar(direc, fast=True)
     elif command == 'sky':
+        ensure_path('calib/'+direc+'/')
         process.process_sky(direc)
     elif command == 'target':
+        ensure_path('calib/'+direc+'/')
         process.process_target(direc)
