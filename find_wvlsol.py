@@ -69,7 +69,7 @@ def get_peak_center(xlist, ylist, i, prec=0.001):
 polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
 
 @manage_dtype(use_args=[0,1])
-def wvlsol(comp, fiber_mask, use_fibers):
+def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     #Initialize a blank wavelength solution.
     wvlsol_map = np.zeros_like(fiber_mask)
 
@@ -95,15 +95,11 @@ def wvlsol(comp, fiber_mask, use_fibers):
         thar_peaks = np.loadtxt('thar_peaks.dat')
         linelist = thar_peaks[:,0]
 
-    #use_fibers = [use_fibers[6]]
-    #use_fibers = [18, 70, 83, 91, 96, 97, 98] + [7, 15]
-    #use_fibers = [70]
     for fnum in use_fibers:
-        #print 'Fiber # '+str(fnum)
         fiber = mask_fits(comp, fiber_mask, fnum)
         comp_counts = row_avg(fiber)
         comp_pix = np.arange(len(comp_counts), dtype=np.float64)
-        coeffs = fiber_wvlsol(comp_pix, comp_counts, linelist, template_wvlsol)
+        coeffs = fiber_wvlsol(comp_pix, comp_counts, linelist, template_wvlsol, **kwargs)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
         wsol_arr = wsol(np.arange(len(wvlsol_map)))
         ones_fiber = np.where(fiber_mask==fnum, np.ones_like(fiber_mask), 0)
@@ -119,9 +115,9 @@ def wvlsol(comp, fiber_mask, use_fibers):
             ax_aft.plot(comp_wvl, comp_counts)
     return wvlsol_map
 
-def fiber_wvlsol(pix, counts, linelist, template_wvlsol, npeaks = 20, plot=False):
+def fiber_wvlsol(pix, counts, linelist, template_wvlsol, npeaks = 20, **kwargs):
     ##REMOVE COSMIC RAYS EVENTUALLY
-    std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks)
+    std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
     #start_n = min([5, npeaks])
     #n = start_n+1 # I'm thinking of trying something fancy where I test
     #                solutions using different numbers of lines too see which
@@ -136,15 +132,15 @@ def fiber_wvlsol(pix, counts, linelist, template_wvlsol, npeaks = 20, plot=False
         #print n, rsqrd/len(peaks_pix)
         n += 1
 
-        if plot:
-            fig, ax = plt.subplots()
-            ax.set_title('wvlsol')
-            ax.set_xlabel('Y_Pixel')
-            ax.set_ylabel('Wavelength ($\AA$)')
-            ax.scatter(peaks_pix, peaks_wvl)
-            pixfit = np.linspace(min(pix), max(pix), 10000)
-            countsfit = wsol(pixfit)
-            ax.plot(pixfit, countsfit)
+        #if plot:
+        #    fig, ax = plt.subplots()
+        #    ax.set_title('wvlsol')
+        #    ax.set_xlabel('Y_Pixel')
+        #    ax.set_ylabel('Wavelength ($\AA$)')
+        #    ax.scatter(peaks_pix, peaks_wvl)
+        #    pixfit = np.linspace(min(pix), max(pix), 10000)
+        #    countsfit = wsol(pixfit)
+        #    ax.plot(pixfit, countsfit)
 
     return coeffs
 
@@ -366,7 +362,7 @@ def find_n_peaks(xdata, ydata, num_peaks):
 
     return peak_xvals[:num_peaks], peak_yvals[:num_peaks]
 
-def fit_ngaussian(xdata, ydata, n, plot=False):
+def fit_ngaussian(xdata, ydata, n, fast=False, plot=False):
     '''
     A function that fits n gaussians to some data. Data can be fit quickly by
     only relying on a cubic spline to find peak centers or data can be fit more
@@ -397,9 +393,11 @@ def fit_ngaussian(xdata, ydata, n, plot=False):
         p0.append(y)
         p0.append(x)
 
-    #m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=0)
-    #p = m.params
-    p = p0
+    if fast:
+        p = p0
+    else:
+        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
+        p = m.params
 
     if plot:
         fig, ax = plt.subplots()
