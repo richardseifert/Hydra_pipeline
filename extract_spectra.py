@@ -185,3 +185,9 @@ def interp_mean(*spectra, **kwargs):
     x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
     y_interp = np.nanmean(y_interp_arrs, axis=0)
     return x_interp, y_interp
+
+@unpack_xy(preserve=True)
+def interp_median(*spectra, **kwargs):
+    x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
+    y_interp = np.nanmedian(y_interp_arrs, axis=0)
+    return x_interp, y_interp
