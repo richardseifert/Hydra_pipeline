@@ -7,7 +7,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
-from extract_spectra import spectrum, extract, interp_mean
+from extract_spectra import spectrum, extract, interp_mean, interp_median
 from sys import stdout
 import os
 from os.path import exists
@@ -189,14 +189,20 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     fiber_mask = fm[0].data
     fm.close()
     
-    for fname in filenames:
+    wvlsol_maps = []
+    for i,fname in enumerate(filenames):
         output.edit_message('Finding wavelength solution from '+fname)
         comp = fits.open(indata_dir+'/'+fname)
         comp[0].data = (comp[0].data - master_bias) / throughput_map
         wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs)
-        ws_path = calib_dir+'/wvlsol.fits'
+        wvlsol_maps.append(wvlsol_map)
+        ws_path = calib_dir+'/wvlsol_'+fname.split('.')[0]+'.fits'
         fits.writeto(ws_path, wvlsol_map, clobber=True)
-        output.edit_message('Wavelength solution saved at '+ws_path)
+        output.edit_message('Wavelength solution derived from '+fname+' saved at '+ws_path)
+    master_wvlsol = np.mean(wvlsol_maps, axis=0)
+    mws_path = calib_dir+'/wvlsol.fits'
+    fits.writeto(mws_path, master_wvlsol, clobber=True)
+    output.edit_message('Master Wavelength solution saved at '+mws_path)
 
 def process_sky(dname, recipe=None, output=stdout):
     output = output_log(log_path='calib/'+dname+'/output.log')
@@ -266,14 +272,16 @@ def sky_dorecipe(r, dname, output=None):
     master_sky.writeto(ms_path, clobber=True)
     output.edit_message('Master sky frame saved at '+ms_path)
 
+    fig, ax = plt.subplots()
     sky_specs = []
     for fnum in use_fibers:
         output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
         sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map)
+        sky_spec.plot(ax=ax, color='lightgrey', lw=1)
         sky_specs.append(sky_spec)
     output.edit_message('Producing master sky spectrum')
-    master_sky_spec = interp_mean(*sky_specs)
-    master_sky_spec.plot()
+    master_sky_spec = interp_median(*sky_specs)
+    master_sky_spec.plot(ax=ax, color='black', lw=1)
 
     mss_path = calib_dir+'/master_sky_spec.dat'
     master_sky_spec.save(mss_path)
@@ -361,11 +369,10 @@ def target_dorecipe(r, dname, output=None):
         tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
         tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
         ts_path = outdata_dir+'/'+tar_ID+'.txt'
-        ax = tar_spec.plot(color='red')
+        ax = tar_spec.plot(color='red', lw=1)
+        ax.set_title(str(fnum))
         tar_spec = tar_spec - master_sky_spec
-        tar_spec.plot(ax=ax)
+        master_sky_spec.plot(ax=ax, color='black', lw=1)
+        tar_spec.plot(ax=ax, lw=1)
         tar_spec.save(ts_path)
         output.edit_message('Target spectrum saved as '+ts_path)
-
-        if True:
-            tar_spec.plot()
