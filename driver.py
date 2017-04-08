@@ -41,7 +41,7 @@ if __name__ == '__main__':
     elif command == 'full-reduce':
         ensure_path('calib/'+direc+'/')
         process.process_flat(direc)
-        process.process_thar(direc)
+        process.process_thar(direc, fast=True)
         process.process_sky(direc)
         process.process_target(direc)
     elif command == 'bias':
