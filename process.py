@@ -44,7 +44,7 @@ class output_log:
 def get_recipes(dname, recipe=None, gnum=None, rtype=None):
     if recipe == None:
         recipe = 'recipes/'+dname+'.recipe'
-    
+
     #Extract lines from recipe file that pertain to flat fields.
     recipe_lines = [line for line in filter(None, open(recipe).read().split('\n')) if line[0] != '#']
     if rtype != None:
@@ -59,7 +59,7 @@ def make_master_bias(dname, recipe=None, output=stdout):
 
     calib_dir = 'calib/'+dname
     ensure_path(calib_dir+'/')
-    
+
     if not os.path.exists(calib_dir+'/'+'master_bias.fits'):
         filenames = []
         for r in bias_recipes:
@@ -84,7 +84,7 @@ def bias_correct(image, bias=None):
         image[0].data = image[0].data - bias
         image[0].header['COMMENT'] = 'Bias corrected.'
         return image
-    
+
 def process_flat(dname, recipe=None, output=stdout):
     output = output_log(log_path='calib/'+dname+'/output.log')
     flat_recipes = get_recipes(dname, recipe, rtype='flat')
@@ -140,7 +140,7 @@ def flat_dorecipe(r, dname, recipe, output=None):
     fm_path = calib_dir+'/fiber_mask.fits'
     fits.writeto(fm_path, fiber_mask, clobber=True)
     output.edit_message('Fiber mask saved at '+fm_path)
- 
+
     #Generate a fiber thoughput map.
     output.edit_message('Generating throughput map.')
     throughput_map = make_throughput_map(fiber_mask, master_flat)
@@ -188,7 +188,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     fm = fits.open(calib_dir+'/fiber_mask.fits')
     fiber_mask = fm[0].data
     fm.close()
-    
+
     wvlsol_maps = []
     for i,fname in enumerate(filenames):
         output.edit_message('Finding wavelength solution from '+fname)
@@ -327,7 +327,7 @@ def target_dorecipe(r, dname, output=None):
         mb.close()
     else:
         master_bias = None
-        
+
     #Load in the fiber mask
     fm = fits.open(calib_dir+'/fiber_mask.fits')
     fiber_mask = fm[0].data
