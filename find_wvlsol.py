@@ -78,7 +78,7 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     p = template_dat[:,2]
     w = template_dat[:,0]
     coeffs = fit_poly(p, w, 3)
-    template_wvlsol = lambda x, c=coeffs: polynomial(x, *c)
+    template = lambda x, c=coeffs: polynomial(x, *c)
     
     #Load thar line list info.
     dat = np.loadtxt('thar_short.fits')
@@ -95,12 +95,15 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
         thar_peaks = np.loadtxt('thar_peaks.dat')
         linelist = thar_peaks[:,0]
 
-    for fnum in use_fibers:
+    def fwvlsol(fnum, template_wvlsol, wvlsol_map = wvlsol_map):
+        print type(template_wvlsol), ':D:D:D:D:'
+        print 'Fiber '+str(fnum)+':'
         fiber = mask_fits(comp, fiber_mask, fnum)
         comp_counts = row_avg(fiber)
         comp_pix = np.arange(len(comp_counts), dtype=np.float64)
         coeffs = fiber_wvlsol(comp_pix, comp_counts, linelist, template_wvlsol, **kwargs)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
+
         wsol_arr = wsol(np.arange(len(wvlsol_map)))
         ones_fiber = np.where(fiber_mask==fnum, np.ones_like(fiber_mask), 0)
         wvlsol_map += np.transpose(np.multiply(np.transpose(ones_fiber), wsol_arr))
@@ -113,36 +116,66 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
             comp_wvl = [wsol(pix) for pix in comp_pix]
             ax_aft.plot(line_list_wvl, line_list_counts*(max(comp_counts)/max(line_list_counts)), color='red')
             ax_aft.plot(comp_wvl, comp_counts)
+        return wsol
+
+    #The template solution was generated using fiber 50, so when generating wvlsols, start
+    # at fiber 50 and go up, then start at fiber 49 and go down.
+    use_fibers_high = sorted([fnum for fnum in use_fibers if fnum >= 50])
+    use_fibers_low = sorted([fnum for fnum in use_fibers if fnum < 50], key = lambda x: -x)
+
+    wsol = template
+    for fnum in use_fibers_high:
+        wsol = fwvlsol(fnum, wsol)
+    wsol = template
+    for fnum in use_fibers_low:
+        wsol = fwvlsol(fnum, wsol)
     return wvlsol_map
 
-def fiber_wvlsol(pix, counts, linelist, template_wvlsol, npeaks = 20, **kwargs):
+def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 25, **kwargs):
+
     ##REMOVE COSMIC RAYS EVENTUALLY
+    #Find peaks in the fiber.
     std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
-    #start_n = min([5, npeaks])
-    #n = start_n+1 # I'm thinking of trying something fancy where I test
-    #                solutions using different numbers of lines too see which
-    #                is the best.
-    n = npeaks #This line is temperary until thing aboove works.
+    start_n = min([5, npeaks])
+    n = start_n # I'm thinking of trying something fancy where I test
+                    #solutions using different numbers of lines too see which
+                    #is the best.
+    #n = npeaks #This line is temperary until thing aboove works.
+    template_wvlsol = starter_wvlsol
     while n <= npeaks:
+        #print 'Finding wvlsol with '+str(n)+' peaks.'
         peaks_pix, peaks_wvl = match_peaks(npeaks_pix[:n], linelist, template_wvlsol)
+        n_used = len(peaks_pix)
         #print len(peaks_pix), 'lines used out of '+str(n)+'.'
         coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
         rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
-        #print n, rsqrd/len(peaks_pix)
+        #print 'Lowest chi-squared: '+str(rsqrd/len(peaks_pix))
+        if rsqrd/n_used > 0.01:
+            #print n, 'BAD!!! :('
+            break
+        else:
+            #print n, 'GOOD!! :)'
+            template_wvlsol = wsol
+            keep_coeffs = coeffs
+            keep_peaks_pix = peaks_pix
+            keep_peaks_wvl = peaks_wvl
+            keep_rsqrd = rsqrd
+            keep_n_used = n_used
         n += 1
 
-        #if plot:
-        #    fig, ax = plt.subplots()
-        #    ax.set_title('wvlsol')
-        #    ax.set_xlabel('Y_Pixel')
-        #    ax.set_ylabel('Wavelength ($\AA$)')
-        #    ax.scatter(peaks_pix, peaks_wvl)
-        #    pixfit = np.linspace(min(pix), max(pix), 10000)
-        #    countsfit = wsol(pixfit)
-        #    ax.plot(pixfit, countsfit)
-
-    return coeffs
+    print n_used
+    if True:
+        wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
+        fig, ax = plt.subplots()
+        ax.set_title('wvlsol, n_peaks = '+str(keep_n_used)+', $res^2$ = '+str(keep_rsqrd)+'$res^2/n_peaks$ = '+str(keep_rsqrd/keep_n_used))
+        ax.set_xlabel('Y_Pixel')
+        ax.set_ylabel('Wavelength ($\AA$)')
+        ax.scatter(keep_peaks_pix, keep_peaks_wvl)
+        pixfit = np.linspace(min(pix), max(pix), 10000)
+        countsfit = wsol(pixfit)
+        ax.plot(pixfit, countsfit)
+    return keep_coeffs
 
 def fit_poly(x, y, n):
     '''
@@ -205,7 +238,7 @@ def min_res_sqr(x, y, func):
 
 def match_peaks(peaks_pix, peaks_wvl, template_wvlsol):
     '''
-    A function that attempts to match peaks found in puxel space to known peaks
+    A function that attempts to match peaks found in pixel space to known peaks
     in wavelength space.
 
     ARGUMENTS:
