@@ -13,6 +13,6 @@ indata/*
 !indata/.gitkeep
 !indata/test_data
 calib/*
-!calib/.gitkeep
+!calib/master_calib
 outdata/*
 !outdata/.gitkeep
