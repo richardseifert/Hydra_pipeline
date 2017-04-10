@@ -2,7 +2,7 @@ from driver import ensure_path
 import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()
-from fitstools import combine, save_2darr, mask_fits, manage_dtype
+from fitstools import combine, save_2darr, mask_fits, manage_dtype, assign_header
 from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
@@ -75,15 +75,34 @@ def make_master_bias(dname, recipe=None, output=stdout):
             for f in biases:
                 f.close()
 
-def bias_correct(image, bias=None):
-    if type(bias) == type(None):
-        #Use bias overscan region of the image.
-        #Figure out later.
+
+def bias_correct(image, bias, fiber_mask=None):
+
+    @manage_dtype(preserve=True)
+    def bc_helper(image, bias, fiber_mask=None):
+        #reduced = (image-median(masked image)) - (bias-median(bias))
+        if type(fiber_mask) != type(None):
+            print 'PATH 1'
+            masked_image = mask_fits(image, fiber_mask, maskval=0, fillval=np.nan)
+            image = (image - np.nanmedian(masked_image)) \
+                        - (bias - np.median(bias))
+        else:
+            print 'PATH 2'
+            image = image - bias
+
+        vals = image.flatten()
+        fig, ax = plt.subplots()
+        bins = np.linspace(-2000, 2000, 2000)
+        n, bins, patches = plt.hist(vals, bins=bins, facecolor='green', alpha=0.75)
+
         return image
-    else:
-        image[0].data = image[0].data - bias
-        image[0].header['COMMENT'] = 'Bias corrected.'
-        return image
+
+    reduced_image = bc_helper(image, bias, fiber_mask)
+    if type(reduced_image) == fits.hdu.hdulist.HDUList:
+        reduced_image = assign_header(reduced_image, image[0].header)
+        reduced_image[0].header['COMMENT'] = 'Bias corrected.'
+
+    return reduced_image
 
 def process_flat(dname, recipe=None, output=stdout):
     output = output_log(log_path='calib/'+dname+'/output.log')
@@ -124,8 +143,6 @@ def flat_dorecipe(r, dname, recipe, output=None):
     #Load flat frames, bias correct, and median combine flats, save to calib directory
     output.edit_message('Loading flat frames.')
     flats = [fits.open(indata_dir+'/'+filename) for filename in filenames]
-    output.edit_message('Bias correcting flat frames.')
-    flats = [bias_correct(flat, master_bias) for flat in flats]
     output.edit_message('Median combining flat frames.')
     master_flat = combine(*flats)
     for flat in flats:
@@ -140,6 +157,10 @@ def flat_dorecipe(r, dname, recipe, output=None):
     fm_path = calib_dir+'/fiber_mask.fits'
     fits.writeto(fm_path, fiber_mask, clobber=True)
     output.edit_message('Fiber mask saved at '+fm_path)
+
+    #Bias correct master flat
+    output.edit_message('Bias correcting master flat frame.')
+    master_flat = bias_correct(master_flat, master_bias, fiber_mask)
 
     #Generate a fiber thoughput map.
     output.edit_message('Generating throughput map.')
@@ -193,7 +214,8 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     for i,fname in enumerate(filenames):
         output.edit_message('Finding wavelength solution from '+fname)
         comp = fits.open(indata_dir+'/'+fname)
-        comp[0].data = (comp[0].data - master_bias) / throughput_map
+        comp = bias_correct(comp, master_bias, fiber_mask)
+        comp[0].data = comp[0].data / throughput_map
         wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs)
         wvlsol_maps.append(wvlsol_map)
         ws_path = calib_dir+'/wvlsol_'+fname.split('.')[0]+'.fits'
@@ -265,7 +287,7 @@ def sky_dorecipe(r, dname, output=None):
     for sky in skys:
         sky.close()
     output.edit_message('Bias correcting master sky frame.')
-    master_sky = bias_correct(master_sky, master_bias)
+    master_sky = bias_correct(master_sky, master_bias, fiber_mask)
     output.edit_message('Throughput correcting master sky frame.')
     master_sky[0].data /= throughput_map
     ms_path = calib_dir+'/master_sky.fits'

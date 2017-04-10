@@ -55,9 +55,11 @@ def get_dtype(*list_of_fits, **kwargs):
             dtype = 2
             image_data = some_fits
             try:
-                assert len(np.asarray(image_data).shape) == 2
+                assert len(np.array(image_data).shape) == 2 \
+                       or len([dim for dim in np.array(image_data).shape if dim != 1]) == 2
             except:
-                raise ValueError('Got an object that is not fits-like') 
+                print np.array(image_data).shape, len(np.array(image_data).shape) == 2
+                raise ValueError('Got an object that is not fits-like')
         if lowest:
             dtype_i = min([dtype_i, dtype])
         else:
@@ -86,7 +88,7 @@ def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=Fal
                 if not (with_header or with_wcs):
                     args[i] = data
                 i+=1
-            
+
             dtype = dtypes[dtype_i]
 
             res = f(*args, **kwargs)
@@ -107,7 +109,7 @@ def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=Fal
             return res
         return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
     return decorator
-    
+
 @manage_dtype()
 def display(some_fits, ax=None):
     if ax == None:
@@ -115,7 +117,7 @@ def display(some_fits, ax=None):
 
     im = ax.imshow(some_fits, cmap='gray', interpolation='nearest', aspect='auto', norm=LogNorm())
     fig.colorbar(im)
-    return ax 
+    return ax
 
 @manage_dtype()
 def row_avg(some_fits):
@@ -144,17 +146,19 @@ def get_common_header(*args):
     list_of_fits = args
     new_header = fits.PrimaryHDU(list_of_fits[0][0]).header
     headers = [f[1] for f in list_of_fits if f[1] != None]
+    if len(headers) == 0:
+        return new_header
     sample_header = headers[0]
     for card in sample_header.keys():
         useCard = True
         for h in headers:
             if (not card in h) or (h[card] != sample_header[card]):
                 useCardr = False
-        
+
         if useCard:
             if card != 'COMMENT' and card != 'HISTORY' and card != '':
                 new_header[card] = sample_header[card]
-    
+
     return new_header
 
 #Change a fits header NOT in place to the header given.
@@ -162,14 +166,12 @@ def assign_header(some_fits, header):
     if type(some_fits) == fits.hdu.hdulist.HDUList:
         data = some_fits[0].data
         return fits.HDUList(fits.PrimaryHDU(data, header))
-        some_fits[0].header = header
     elif type(some_fits) == fits.hdu.image.PrimaryHDU:
         data = some_fits.data
         return fits.PrimaryHDU(data, header)
-        some_fits.header = header
     else:
         raise TypeError(str(some_fits) + 'is not an appropriate object for fits header assignment.')
-    
+
 def combine(*args, **kwargs):
     comb_fits = combine_helper(*args, **kwargs)
     list_of_fits = args
@@ -200,13 +202,13 @@ def save_2darr(data, savepath):
     hdulist.writeto(savepath, clobber=True)
 
 @manage_dtype()
-def mask_fits(some_fits, some_mask, maskval=1, reshape=False):
+def mask_fits(some_fits, some_mask, maskval=1, fillval=0, reshape=False):
     if reshape:
         return mask_fits_reshape(some_fits, some_mask, maskval)
 
     if some_fits.shape != some_mask.shape:
         raise ValueError('Data and mask must be the same dimensions')
-    return np.where(some_mask == maskval, some_fits, 0)
+    return np.where(some_mask == maskval, some_fits, fillval)
 
 def mask_fits_reshape(some_fits, some_mask, maskval=1):
     result = []
