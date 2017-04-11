@@ -75,6 +75,11 @@ def make_master_bias(dname, recipe=None, output=stdout):
             for f in biases:
                 f.close()
 
+def reduce_image(image, bias, fiber_mask=None):
+    image = bias_correct(image, bias, fiber_mask)
+    image = dark_correct(image)
+    image = mask_badpixels(image)
+    return image
 
 def bias_correct(image, bias, fiber_mask=None):
 
@@ -97,12 +102,52 @@ def bias_correct(image, bias, fiber_mask=None):
 
         return image
 
-    reduced_image = bc_helper(image, bias, fiber_mask)
-    if type(reduced_image) == fits.hdu.hdulist.HDUList:
-        reduced_image = assign_header(reduced_image, image[0].header)
-        reduced_image[0].header['COMMENT'] = 'Bias corrected.'
+    bias_subtracted_image = bc_helper(image, bias, fiber_mask)
+    if type(bias_subtracted_image) == fits.hdu.hdulist.HDUList:
+        bias_subtracted_image = assign_header(bias_subtracted_image, image[0].header)
+        bias_subtracted_image[0].header['COMMENT'] = 'Bias corrected.'
 
-    return reduced_image
+    return bias_subtracted_image
+
+def dark_correct(image, exptime=None):
+    dark_map = fits.open('calib/master_calib/dark_fit.fits')[0].data
+    header = image[0].header
+    gain = header['GAIN']
+    dark_map /= gain
+
+    if exptime == None and type(image) == fits.hdu.hdulist.HDUList:
+        exptime = image[0].header['EXPTIME']
+    else:
+        raise ValueError('Cannot determine exposure time for dark subtraction.')
+
+    @manage_dtype(preserve=True)
+    def dc_helper(image, dark_map, exptime):
+        image = image - exptime*dark_map
+        return image
+
+
+    dark_subtracted_image = dc_helper(image, dark_map, exptime)
+    if type(dark_subtracted_image) == fits.hdu.hdulist.HDUList:
+        dark_subtracted_image = assign_header(dark_subtracted_image, image[0].header)
+        dark_subtracted_image[0].header['COMMENT'] = 'Bias corrected.'
+
+    return dark_subtracted_image
+
+
+def mask_badpixels(image):
+    bad_mask = fits.open('calib/master_calib/badmask.fits')
+
+    @manage_dtype(preserve=True)
+    def mbp_helper(image, bad_mask):
+        image = mask_fits(image, bad_mask, maskval=1.0, fillval=np.nan)
+        return image
+
+    bad_masked_image = mbp_helper(image, bad_mask)
+    if type(bad_masked_image) == fits.hdu.hdulist.HDUList:
+        bad_masked_image = assign_header(bad_masked_image, image[0].header)
+        bad_masked_image[0].header['COMMENT'] = 'Bad pixels masked.'
+
+    return bad_masked_image
 
 def process_flat(dname, recipe=None, output=stdout):
     output = output_log(log_path='calib/'+dname+'/output.log')
@@ -158,9 +203,9 @@ def flat_dorecipe(r, dname, recipe, output=None):
     fits.writeto(fm_path, fiber_mask, clobber=True)
     output.edit_message('Fiber mask saved at '+fm_path)
 
-    #Bias correct master flat
+    #Calibrate master flat
     output.edit_message('Bias correcting master flat frame.')
-    master_flat = bias_correct(master_flat, master_bias, fiber_mask)
+    master_flat = reduce_image(master_flat, master_bias, fiber_mask)
 
     #Generate a fiber thoughput map.
     output.edit_message('Generating throughput map.')
@@ -214,7 +259,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     for i,fname in enumerate(filenames):
         output.edit_message('Finding wavelength solution from '+fname)
         comp = fits.open(indata_dir+'/'+fname)
-        comp = bias_correct(comp, master_bias, fiber_mask)
+        comp = reduce_image(comp, master_bias, fiber_mask)
         comp[0].data = comp[0].data / throughput_map
         wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs)
         wvlsol_maps.append(wvlsol_map)
@@ -287,7 +332,7 @@ def sky_dorecipe(r, dname, output=None):
     for sky in skys:
         sky.close()
     output.edit_message('Bias correcting master sky frame.')
-    master_sky = bias_correct(master_sky, master_bias, fiber_mask)
+    master_sky = reduce_image(master_sky, master_bias, fiber_mask)
     output.edit_message('Throughput correcting master sky frame.')
     master_sky[0].data /= throughput_map
     ms_path = calib_dir+'/master_sky.fits'
@@ -378,7 +423,7 @@ def target_dorecipe(r, dname, output=None):
     for f in tars:
         f.close()
     output.edit_message('Bias correcting master target frame.')
-    master_tar = bias_correct(master_tar, master_bias)
+    master_tar = reduce_image(master_tar, master_bias)
     output.edit_message('Throughput correcting master target frame.')
     master_tar[0].data /= throughput_map
     mt_path = calib_dir+'/master_target_frame.fits'

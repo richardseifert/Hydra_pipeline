@@ -121,7 +121,7 @@ def display(some_fits, ax=None):
 
 @manage_dtype()
 def row_avg(some_fits):
-    return [np.sum(some_fits[i,:]) for i in range(len(some_fits))]
+    return [np.nansum(some_fits[i,:]) for i in range(len(some_fits))]
 
 @manage_dtype()
 def col_avg(some_fits):

@@ -24,7 +24,7 @@ def getFiberNum(some_header):
 # of peaks are returned.
 def find_sig_peaks(some_list):
     threshhold = sum(some_list)/len(some_list)
-    
+
     #Identify significant peaks
     peaks = []
     for i in range(len(col_avgs))[1:-1]:
@@ -123,7 +123,7 @@ def improve_peak_spacing(some_list, peak_list):
     return peak_list
 
 #Function that finds the center of a fiber as a function of y_pixel position.
-# The function also returns the width obtained from the column-averaged 
+# The function also returns the width obtained from the column-averaged
 # profile of the fiber.
 @fitstools.manage_dtype()
 def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
@@ -174,7 +174,7 @@ def fit_to_func(func, x, y):
     return f
 
 #Function for finding the center of a fiber and
-# determining the width that contains more than 
+# determining the width that contains more than
 # 99.5% of the total counts of the fiber.
 def find_center_and_width(some_list, pos, rad):
     l = list(some_list)
@@ -194,7 +194,7 @@ def find_center_and_width(some_list, pos, rad):
         if l[right] > l[left] and right <= high:
             f_high += 1
         else:
-            f_low -= 1 
+            f_low -= 1
     lslice = l[f_low:f_high+1]
     center = lslice.index(max(lslice))+f_low
     width = f_high-center
@@ -213,7 +213,7 @@ def find_fibers(some_fits, use_fibers):
     col_avgs = fitstools.col_avg(data)
     fig, ax = plt.subplots()
     ax.plot(col_avgs)
-     
+
     peaks = get_peaks(col_avgs, n)
     peaks = improve_peak_spacing(col_avgs, peaks)
     spacing = int(round(ident_spacing(peaks)))
