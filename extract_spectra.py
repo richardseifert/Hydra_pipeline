@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()
-from fitstools import mask_fits, row_avg
+from fitstools import mask_fits, row_avg, manage_dtype
 from scipy.interpolate import interp1d
 
 def unpack_xy(use_args='all', preserve=False):
@@ -130,6 +130,41 @@ def extract(fiber_mask, fiber_num, img, wvlsol):
     wavelength, flux = interp_add(*zip(wvlsol_slices, counts_slices), x_interp_i=center_i)
 
     return spectrum(wavelength, flux)
+
+@manage_dtype(with_header=[0])
+def optimal_extraction(image, fiber_mask, fnum, flat, wvlsol):
+    header = image[1]
+    image = image[0]
+
+    image = mask_fits(image, fiber_mask, maskval=fnum, reshape=True)
+    flat = mask_fits(flat, fiber_mask, maskval=fnum, reshape=True)
+    wvlsol = mask_fits(wvlsol, fiber_mask, maskval=fnum, reshape=True)
+
+    rn = header['RDNOISE']
+    g = header['GAIN']
+    dn = 0 #Eventually get from the hot pixel map.
+
+    one = np.ones_like(image)
+    err = (one*rn**2 + abs(g*image) + one*dn**2)**0.5
+
+    weights = 1/err**2
+
+    numerator = weights*flat*image
+    denominator = weights*flat**2
+
+    #Use the center of the fiber as the wavelength domain.
+    center_i = wvlsol.shape[1]//2
+    wvlsol_slices = [wvlsol[:,i] for i in range(len(wvlsol[0]))]
+    numerator_slices = [numerator[:,i] for i in range(len(numerator[0]))]
+    denominator_slices = [denominator[:,i] for i in range(len(denominator[0]))]
+    wavelength, numerator = interp_add(*zip(wvlsol_slices, numerator_slices), x_interp_i=center_i)
+    wavelength, denominator = interp_add(*zip(wvlsol_slices, denominator_slices), x_interp_i=center_i)
+
+    flux = numerator/denominator
+
+    return spectrum(wavelength, flux)
+
+
 
 def get_x_interp(x_arrs, x_interp=None, x_interp_i=None, dx=None, **kwargs):
     if x_interp == None:

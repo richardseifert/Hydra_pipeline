@@ -7,7 +7,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
-from extract_spectra import spectrum, extract, interp_mean, interp_median
+from extract_spectra import spectrum, extract, interp_mean, interp_median, optimal_extraction
 from sys import stdout
 import os
 from os.path import exists
@@ -261,7 +261,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
         comp = fits.open(indata_dir+'/'+fname)
         comp = reduce_image(comp, master_bias, fiber_mask)
         comp[0].data = comp[0].data / throughput_map
-        wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs)
+        wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs) #NEED OPTIMAL EXTRACTION IN THERE
         wvlsol_maps.append(wvlsol_map)
         ws_path = calib_dir+'/wvlsol_'+fname.split('.')[0]+'.fits'
         fits.writeto(ws_path, wvlsol_map, clobber=True)
@@ -314,6 +314,11 @@ def sky_dorecipe(r, dname, output=None):
     fiber_mask = fm[0].data
     fm.close()
 
+    #Load in the master flat frame.
+    mf = fits.open(calib_dir+'/master_flat.fits')
+    master_flat = mf[0].data
+    mf.close()
+
     #Load in the throughput map.
     tm = fits.open(calib_dir+'/throughput_map.fits')
     throughput_map = tm[0].data
@@ -334,7 +339,7 @@ def sky_dorecipe(r, dname, output=None):
     output.edit_message('Bias correcting master sky frame.')
     master_sky = reduce_image(master_sky, master_bias, fiber_mask)
     output.edit_message('Throughput correcting master sky frame.')
-    master_sky[0].data /= throughput_map
+    #master_sky[0].data /= throughput_map
     ms_path = calib_dir+'/master_sky.fits'
     master_sky.writeto(ms_path, clobber=True)
     output.edit_message('Master sky frame saved at '+ms_path)
@@ -343,7 +348,8 @@ def sky_dorecipe(r, dname, output=None):
     sky_specs = []
     for fnum in use_fibers:
         output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
-        sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map)
+        #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
+        sky_spec = optimal_extraction(master_sky, fiber_mask, fnum, master_flat, wvlsol_map)
         sky_spec.plot(ax=ax, color='lightgrey', lw=1)
         sky_specs.append(sky_spec)
     output.edit_message('Producing master sky spectrum')
@@ -410,6 +416,11 @@ def target_dorecipe(r, dname, output=None):
     throughput_map = tm[0].data
     tm.close()
 
+    #Load in the master flat frame.
+    mf = fits.open(calib_dir+'/master_flat.fits')
+    master_flat = mf[0].data
+    mf.close()
+
     #Load in master sky spectrum.
     mss = np.loadtxt(calib_dir+'/master_sky_spec.dat')
     master_sky_spec = spectrum(mss[:,0], mss[:,1])
@@ -425,7 +436,7 @@ def target_dorecipe(r, dname, output=None):
     output.edit_message('Bias correcting master target frame.')
     master_tar = reduce_image(master_tar, master_bias)
     output.edit_message('Throughput correcting master target frame.')
-    master_tar[0].data /= throughput_map
+    #master_tar[0].data /= throughput_map
     mt_path = calib_dir+'/master_target_frame.fits'
     master_tar.writeto(mt_path, clobber=True)
     output.edit_message('Master target frame saved at '+mt_path)
@@ -434,7 +445,8 @@ def target_dorecipe(r, dname, output=None):
     for fnum in use_fibers:
         output.edit_message('Extracting target spectrum from fiber '+str(fnum))
         tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
-        tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
+        #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
+        tar_spec = optimal_extraction(master_tar, fiber_mask, fnum, master_flat, wvlsol_map)
         ts_path = outdata_dir+'/'+tar_ID+'.txt'
         ax = tar_spec.plot(color='red', lw=1)
         ax.set_title(str(fnum))
