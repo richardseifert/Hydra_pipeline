@@ -81,13 +81,12 @@ def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=Fal
                 if d < dtype_i:
                     dtype_i = d
                 args[i] = [data]
-                if with_header:
+                if with_header==True or (isinstance(with_header, (list, tuple)) and i in with_header):
                     args[i].append(header)
-                if with_wcs:
+                if with_wcs==True or (isinstance(with_wcs, (list, tuple)) and i in with_wcs):
                     args[i].append(wcs)
-                if not (with_header or with_wcs):
+                if len(args[i])==1:
                     args[i] = data
-                i+=1
 
             dtype = dtypes[dtype_i]
 
