@@ -69,29 +69,23 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     return wvlsol_map
 
 
-def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 25, **kwargs):
-
-    ##REMOVE COSMIC RAYS EVENTUALLY
-
+def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
     #Find peaks in the fiber.
     std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
     n = min([5, npeaks])
     template_wvlsol = starter_wvlsol
+    ignore_peaks_pix = []
     while n <= npeaks:
-        print 'Finding wvlsol with '+str(n)+' peaks.'
-        peaks_pix, peaks_wvl = match_peaks(npeaks_pix[:n], linelist, template_wvlsol)
+        use_peaks_pix = [npeaks_pix[i] for i in range(n) if not i in ignore_peaks_pix]
+        peaks_pix, peaks_wvl = match_peaks(use_peaks_pix, linelist, template_wvlsol)
         n_used = len(peaks_pix)
-        print len(peaks_pix), 'lines used out of '+str(n)+'.'
         coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
         rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
         #print 'Lowest chi-squared: '+str(rsqrd/len(peaks_pix))
         if rsqrd/n_used > 0.01:
-            print n, 'BAD!!! :('
-            print '\t', rsqrd/n_used
-            break
+            ignore_peaks_pix.append(n-1)
         else:
-            print n, 'GOOD!! :)'
             template_wvlsol = wsol
             keep_coeffs = coeffs
             keep_peaks_pix = peaks_pix
@@ -100,7 +94,6 @@ def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 25, **kwargs):
             keep_n_used = n_used
         n += 1
 
-    print n_used
     if True:
         wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
         fig, ax = plt.subplots()
