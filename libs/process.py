@@ -1,4 +1,4 @@
-from driver import ensure_path
+from ensure_path import ensure_path
 import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()

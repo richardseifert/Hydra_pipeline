@@ -10,7 +10,7 @@ def make_throughput_map(fmask, mflat):
 
     #Obtain a list of the used fibers from the fiber mask.
     fnums = [int(n) for n in set(fmask.flatten()) if n != 0]
-    
+
     #Correct for the profile of each flat fiber
     for fnum in fnums:
         flat_spec = row_avg(mask_fits(mflat, fmask, maskval=fnum))
