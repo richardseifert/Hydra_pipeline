@@ -16,26 +16,29 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     #Initialize a blank wavelength solution.
     wvlsol_map = np.zeros_like(fiber_mask)
 
+    #Define path to thar calibration files.
+    master_calib = 'calib/master_calib'
+
     #Load the template wavelength solution.
-    template_dat = np.loadtxt('template_wvlsol.dat', delimiter=',')
+    template_dat = np.loadtxt(master_calib+'/template_wvlsol.dat', delimiter=',')
     p = template_dat[:,2]
     w = template_dat[:,0]
     coeffs = fit_poly(p, w, 3)
     template = lambda x, c=coeffs: polynomial(x, *c)
 
     #Load thar line list info.
-    dat = np.loadtxt('thar_short.fits')
+    dat = np.loadtxt(master_calib+'/thar_short.fits')
     line_list_wvl = dat[:,0]
     line_list_counts = dat[:,1]
     #If the table of thar peaks does not exist, make it.
-    if not os.path.exists('thar_peaks.dat'):
+    if not os.path.exists(master_calib+'/thar_peaks.dat'):
         std, l_peak_x, l_peak_y = fit_ngaussian(line_list_wvl, line_list_counts, 40)
-        f = open('thar_peaks.dat', 'w')
+        f = open(master_calib+'/thar_peaks.dat', 'w')
         for x, y in zip(l_peak_x, l_peak_y):
             f.write(str(x).ljust(24)+str(y)+'\n')
         f.close()
     else:
-        thar_peaks = np.loadtxt('thar_peaks.dat')
+        thar_peaks = np.loadtxt(master_calib+'/thar_peaks.dat')
         linelist = thar_peaks[:,0]
 
     def f_wvlsol(fnum, template_wvlsol, wvlsol_map=wvlsol_map):
