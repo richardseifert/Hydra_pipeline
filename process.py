@@ -12,6 +12,7 @@ from sys import stdout
 import os
 from os.path import exists
 import time
+from calib import calibrate
 
 class output_log:
     def __init__(self, writer=stdout, log_path=None):
@@ -75,79 +76,6 @@ def make_master_bias(dname, recipe=None, output=stdout):
             for f in biases:
                 f.close()
 
-def reduce_image(image, bias, fiber_mask=None):
-    image = bias_correct(image, bias, fiber_mask)
-    image = dark_correct(image)
-    image = mask_badpixels(image)
-    return image
-
-def bias_correct(image, bias, fiber_mask=None):
-
-    @manage_dtype(preserve=True)
-    def bc_helper(image, bias, fiber_mask=None):
-        #reduced = (image-median(masked image)) - (bias-median(bias))
-        if type(fiber_mask) != type(None):
-            print 'PATH 1'
-            masked_image = mask_fits(image, fiber_mask, maskval=0, fillval=np.nan)
-            image = (image - np.nanmedian(masked_image)) \
-                        - (bias - np.median(bias))
-        else:
-            print 'PATH 2'
-            image = image - bias
-
-        vals = image.flatten()
-        fig, ax = plt.subplots()
-        bins = np.linspace(-2000, 2000, 2000)
-        n, bins, patches = plt.hist(vals, bins=bins, facecolor='green', alpha=0.75)
-
-        return image
-
-    bias_subtracted_image = bc_helper(image, bias, fiber_mask)
-    if type(bias_subtracted_image) == fits.hdu.hdulist.HDUList:
-        bias_subtracted_image = assign_header(bias_subtracted_image, image[0].header)
-        bias_subtracted_image[0].header['COMMENT'] = 'Bias corrected.'
-
-    return bias_subtracted_image
-
-def dark_correct(image, exptime=None):
-    dark_map = fits.open('calib/master_calib/dark_fit.fits')[0].data
-    header = image[0].header
-    gain = header['GAIN']
-    dark_map /= gain
-
-    if exptime == None and type(image) == fits.hdu.hdulist.HDUList:
-        exptime = image[0].header['EXPTIME']
-    else:
-        raise ValueError('Cannot determine exposure time for dark subtraction.')
-
-    @manage_dtype(preserve=True)
-    def dc_helper(image, dark_map, exptime):
-        image = image - exptime*dark_map
-        return image
-
-
-    dark_subtracted_image = dc_helper(image, dark_map, exptime)
-    if type(dark_subtracted_image) == fits.hdu.hdulist.HDUList:
-        dark_subtracted_image = assign_header(dark_subtracted_image, image[0].header)
-        dark_subtracted_image[0].header['COMMENT'] = 'Bias corrected.'
-
-    return dark_subtracted_image
-
-
-def mask_badpixels(image):
-    bad_mask = fits.open('calib/master_calib/badmask.fits')
-
-    @manage_dtype(preserve=True)
-    def mbp_helper(image, bad_mask):
-        image = mask_fits(image, bad_mask, maskval=1.0, fillval=np.nan)
-        return image
-
-    bad_masked_image = mbp_helper(image, bad_mask)
-    if type(bad_masked_image) == fits.hdu.hdulist.HDUList:
-        bad_masked_image = assign_header(bad_masked_image, image[0].header)
-        bad_masked_image[0].header['COMMENT'] = 'Bad pixels masked.'
-
-    return bad_masked_image
 
 def process_flat(dname, recipe=None, output=stdout):
     output = output_log(log_path='calib/'+dname+'/output.log')
@@ -205,7 +133,7 @@ def flat_dorecipe(r, dname, recipe, output=None):
 
     #Calibrate master flat
     output.edit_message('Bias correcting master flat frame.')
-    master_flat = reduce_image(master_flat, master_bias, fiber_mask)
+    master_flat = calibrate(master_flat, master_bias, fiber_mask)
 
     #Generate a fiber thoughput map.
     output.edit_message('Generating throughput map.')
@@ -259,7 +187,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     for i,fname in enumerate(filenames):
         output.edit_message('Finding wavelength solution from '+fname)
         comp = fits.open(indata_dir+'/'+fname)
-        comp = reduce_image(comp, master_bias, fiber_mask)
+        comp = calibrate(comp, master_bias, fiber_mask)
         comp[0].data = comp[0].data / throughput_map
         wvlsol_map = wvlsol(comp, fiber_mask, use_fibers, **kwargs) #NEED OPTIMAL EXTRACTION IN THERE
         wvlsol_maps.append(wvlsol_map)
@@ -337,7 +265,7 @@ def sky_dorecipe(r, dname, output=None):
     for sky in skys:
         sky.close()
     output.edit_message('Bias correcting master sky frame.')
-    master_sky = reduce_image(master_sky, master_bias, fiber_mask)
+    master_sky = calibrate(master_sky, master_bias, fiber_mask)
     output.edit_message('Throughput correcting master sky frame.')
     #master_sky[0].data /= throughput_map
     ms_path = calib_dir+'/master_sky.fits'
@@ -434,7 +362,7 @@ def target_dorecipe(r, dname, output=None):
     for f in tars:
         f.close()
     output.edit_message('Bias correcting master target frame.')
-    master_tar = reduce_image(master_tar, master_bias)
+    master_tar = calibrate(master_tar, master_bias)
     output.edit_message('Throughput correcting master target frame.')
     #master_tar[0].data /= throughput_map
     mt_path = calib_dir+'/master_target_frame.fits'
