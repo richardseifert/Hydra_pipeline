@@ -14,34 +14,6 @@ from os.path import exists
 import time
 from calib import calibrate
 
-class output_log:
-    def __init__(self, writer=stdout, log_path=None):
-        self.log_path = log_path
-        if log_path != None and not exists(log_path):
-            f = open(log_path, 'w')
-        self.writer = writer
-        self.progress_str = ""
-        self.message_str = ""
-        self.coverlen = 0
-    def update(self):
-        strg = self.progress_str+' '+self.message_str
-        strg = strg.ljust(self.coverlen)
-        self.coverlen = len(strg)
-        self.writer.write('\r'+strg)
-        self.writer.flush()
-    def edit_progress(self, new_str):
-        self.progress_str = new_str
-        self.update()
-    def edit_message(self, new_str, add_to_log=True):
-        self.message_str = new_str
-        self.update()
-        if add_to_log and self.log_path != None:
-            dt_str = time.strftime("%Y-%m-%dT%H:%M:%S")
-            f = open(self.log_path, 'a')
-            f.write('['+dt_str+'] '+self.message_str+'\n')
-    def linebreak():
-        self.writer.write('\n')
-
 def get_recipes(dname, recipe=None, gnum=None, rtype=None):
     if recipe == None:
         recipe = 'recipes/'+dname+'.recipe'
@@ -78,7 +50,7 @@ def make_master_bias(dname, recipe=None, output=stdout):
 
 
 def process_flat(dname, recipe=None, output=stdout):
-    output = output_log(log_path='calib/'+dname+'/output.log')
+    #output = output_log(log_path='calib/'+dname+'/output.log')
     flat_recipes = get_recipes(dname, recipe, rtype='flat')
     num_r = len(flat_recipes)
 
@@ -143,7 +115,7 @@ def flat_dorecipe(r, dname, recipe, output=None):
     output.edit_message('Throughput map saved at '+tm_path)
 
 def process_thar(dname, recipe=None, output=stdout, **kwargs):
-    output = output_log(log_path='calib/'+dname+'/output.log')
+    #output = output_log(log_path='calib/'+dname+'/output.log')
     thar_recipes = get_recipes(dname, recipe, rtype='comp')
 
     num_r = len(thar_recipes)
@@ -200,7 +172,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     output.edit_message('Master Wavelength solution saved at '+mws_path)
 
 def process_sky(dname, recipe=None, output=stdout):
-    output = output_log(log_path='calib/'+dname+'/output.log')
+    #output = output_log(log_path='calib/'+dname+'/output.log')
     sky_recipes = get_recipes(dname, recipe, rtype='sky')
 
     num_r = len(sky_recipes)
@@ -272,17 +244,20 @@ def sky_dorecipe(r, dname, output=None):
     master_sky.writeto(ms_path, clobber=True)
     output.edit_message('Master sky frame saved at '+ms_path)
 
-    fig, ax = plt.subplots()
+    if False:
+        fig, ax = plt.subplots()
     sky_specs = []
     for fnum in use_fibers:
         output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
         #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
         sky_spec = optimal_extraction(master_sky, fiber_mask, fnum, master_flat, wvlsol_map)
-        sky_spec.plot(ax=ax, color='lightgrey', lw=1)
+        if False:
+            sky_spec.plot(ax=ax, color='lightgrey', lw=1)
         sky_specs.append(sky_spec)
     output.edit_message('Producing master sky spectrum')
     master_sky_spec = interp_median(*sky_specs)
-    master_sky_spec.plot(ax=ax, color='black', lw=1)
+    if False:
+        master_sky_spec.plot(ax=ax, color='black', lw=1)
 
     mss_path = calib_dir+'/master_sky_spec.dat'
     master_sky_spec.save(mss_path)
@@ -290,7 +265,7 @@ def sky_dorecipe(r, dname, output=None):
 
 
 def process_target(dname, recipe=None, output=stdout):
-    output = output_log(log_path='calib/'+dname+'/output.log')
+    #output = output_log(log_path='calib/'+dname+'/output.log')
     tar_recipes = get_recipes(dname, recipe, rtype='object')
 
     num_r = len(tar_recipes)
@@ -352,7 +327,7 @@ def target_dorecipe(r, dname, output=None):
     #Load in master sky spectrum.
     mss = np.loadtxt(calib_dir+'/master_sky_spec.dat')
     master_sky_spec = spectrum(mss[:,0], mss[:,1])
-    master_sky_spec.plot()
+    #master_sky_spec.plot()
 
     #Make master target frame
     output.edit_message('Loading target frames.')
@@ -376,10 +351,12 @@ def target_dorecipe(r, dname, output=None):
         #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
         tar_spec = optimal_extraction(master_tar, fiber_mask, fnum, master_flat, wvlsol_map)
         ts_path = outdata_dir+'/'+tar_ID+'.txt'
-        ax = tar_spec.plot(color='red', lw=1)
-        ax.set_title(str(fnum))
+        if False:
+            ax = tar_spec.plot(color='red', lw=1)
+            ax.set_title(str(fnum))
         tar_spec = tar_spec - master_sky_spec
-        master_sky_spec.plot(ax=ax, color='black', lw=1)
-        tar_spec.plot(ax=ax, lw=1)
+        if False:
+            master_sky_spec.plot(ax=ax, color='black', lw=1)
+            tar_spec.plot(ax=ax, lw=1)
         tar_spec.save(ts_path)
         output.edit_message('Target spectrum saved as '+ts_path)
