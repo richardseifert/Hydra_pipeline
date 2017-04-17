@@ -16,12 +16,10 @@ def bias_correct(image, bias, fiber_mask=None):
     def bc_helper(image, bias, fiber_mask=None):
         #reduced = (image-median(masked image)) - (bias-median(bias))
         if type(fiber_mask) != type(None):
-            print 'PATH 1'
             masked_image = mask_fits(image, fiber_mask, maskval=0, fillval=np.nan)
             image = (image - np.nanmedian(masked_image)) \
                         - (bias - np.median(bias))
         else:
-            print 'PATH 2'
             image = image - bias
 
         vals = image.flatten()

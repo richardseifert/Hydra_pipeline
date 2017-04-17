@@ -13,7 +13,7 @@ if __name__ == '__main__':
     command = sys.argv[1]
     direc = sys.argv[2]
     loc = 'indata/'+direc
-    
+
     if command == 'make-recipe':
         make_recipe(loc, 'recipes/'+direc+'.recipe')
     elif command == 'full-reduce':

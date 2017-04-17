@@ -211,17 +211,19 @@ def find_fibers(some_fits, use_fibers):
         n = getFiberNum(header)
     fitstools.display(data)
     col_avgs = fitstools.col_avg(data)
-    fig, ax = plt.subplots()
-    ax.plot(col_avgs)
+    if False:
+        fig, ax = plt.subplots()
+        ax.plot(col_avgs)
 
     peaks = get_peaks(col_avgs, n)
     peaks = improve_peak_spacing(col_avgs, peaks)
     spacing = int(round(ident_spacing(peaks)))
-    fig, ax = plt.subplots()
-    ax.plot(col_avgs)
-    ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
-    #fig, ax = plt.subplots()
-    #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
+    if False:
+        fig, ax = plt.subplots()
+        ax.plot(col_avgs)
+        ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
+        #fig, ax = plt.subplots()
+        #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
     peaks = peaks[::-1] #reversed order is the order they appear on the chip.
     mask = get_fiber_mask(data, peaks, use_fibers)
     return mask

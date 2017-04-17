@@ -97,7 +97,7 @@ def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
             keep_n_used = n_used
         n += 1
 
-    if True:
+    if False:
         wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
         fig, ax = plt.subplots()
         ax.set_title('wvlsol, n_peaks = '+str(keep_n_used)+', $res^2$ = '+str(keep_rsqrd)+'$res^2/n_peaks$ = '+str(keep_rsqrd/keep_n_used))
