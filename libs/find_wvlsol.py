@@ -44,6 +44,10 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     def f_wvlsol(fnum, template_wvlsol, wvlsol_map=wvlsol_map):
         #Extract comp spectrum in pixel space.
         comp_counts = extract_counts(comp, fiber_mask, fnum)
+        if False:
+            fig, ax = plt.subplots()
+            ax.plot(comp_counts)
+            ax.set_title('comp_counts')
         comp_pix = np.arange(len(comp_counts), dtype=np.float64)
 
         #Find wavelength solution for fiber.
@@ -74,6 +78,9 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
 
 def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
     #Find peaks in the fiber.
+    if False:
+        fig, ax = plt.subplots()
+        ax.plot(pix, counts, color='black', lw=1)
     std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
     n = min([5, npeaks])
     template_wvlsol = starter_wvlsol

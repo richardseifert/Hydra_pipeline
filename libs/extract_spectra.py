@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 from fitstools import mask_fits, row_avg, manage_dtype
 from scipy.interpolate import interp1d
+from astropy.io import fits
 
 def unpack_xy(use_args='all', preserve=False):
     def decorator(f):
@@ -13,16 +14,20 @@ def unpack_xy(use_args='all', preserve=False):
             dtype = None
             for i in use_args:
                 if isinstance(args[i], spectrum):
-                    x_arr, y_arr = args[i].get_data()
-                    dtype = lambda w, f: spectrum(w, f)
+                    x_arr, y_arr, yerr_arr = args[i].get_data()
+                    dtype = lambda w, f, ferr: spectrum(w, f, ferr)
                     d = 1
+                elif len(args[i]) == 3:
+                    x_arr, y_arr, yerr_arr = args[i]
                 elif len(args[i]) == 2:
                     x_arr, y_arr = args[i]
+                    yerr_arr = np.zeros_like(y_arr)
                 #Sort x and y
                 sort_i = np.argsort(x_arr)
                 y_arr = np.asarray(y_arr)[sort_i]
+                yerr_arr = np.asarray(yerr_arr)[sort_i]
                 x_arr = np.asarray(x_arr)[sort_i]
-                args[i] = [x_arr, y_arr]
+                args[i] = [x_arr, y_arr, yerr_arr]
             res = f(*args, **kwargs)
             if preserve and dtype != None:
                 res = dtype(*res)
@@ -31,9 +36,15 @@ def unpack_xy(use_args='all', preserve=False):
     return decorator
 
 class spectrum:
-    def __init__(self, wavelength, flux, header=None):
+    def __init__(self, wavelength, flux, flux_err=None, header=None):
         self.wav = wavelength
         self.flux = flux
+        if type(flux_err) == type(None):
+            self.flux_err = np.zeros_like(flux)
+        else:
+            print 'bwaaa', flux_err, type(flux_err)
+            self.flux_err = flux_err
+        print np.nanmean(self.flux_err), 'MEAN ERROR!'
         self.header = header
     def set_header(self, new_header):
         self.header = new_header
@@ -42,28 +53,32 @@ class spectrum:
     def get_flux(self):
         return self.flux
     def get_data(self):
-        return [self.wav, self.flux]
+        return [self.wav, self.flux, self.flux_err]
     @unpack_xy()
     def math_helper(spec1, spec2, **kwargs):
-        s1_x, s1_y = spec1
-        s2_x, s2_y = spec2
+        s1_x, s1_y, s1_yerr = spec1
+        s2_x, s2_y, s2_yerr = spec2
         x_interp = get_x_interp([s1_x, s2_x], **kwargs)
         s1_y_interp = interp1d(s1_x, s1_y)(x_interp)
+        s1_yerr_interp = interp1d(s1_x, s1_yerr)(x_interp)
         s2_y_interp = interp1d(s2_x, s2_y)(x_interp)
-        return x_interp, s1_y_interp, s2_y_interp
+        s2_yerr_interp = interp1d(s2_x, s2_yerr)(x_interp)
+        return x_interp, s1_y_interp, s1_yerr_interp, s2_y_interp, s2_yerr_interp
 
     def __add__(self, other, **kwargs):
         try:
-            x_interp, self_y_interp, other_y_interp = spectrum.math_helper(self, other, **kwargs)
+            x_interp, self_y_interp, self_yerr_interp, other_y_interp, other_yerr_interp = spectrum.math_helper(self, other, **kwargs)
             y_interp = self_y_interp+other_y_interp
-            return spectrum(x_interp, y_interp)
+            yerr_interp = (self_yerr_interp**2+other_yerr_interp**2)**0.5
+            return spectrum(x_interp, y_interp, yerr_interp)
         except:
             print 'BROKE'
     def __sub__(self, other, **kwargs):
         try:
-            x_interp, self_y_interp, other_y_interp = spectrum.math_helper(self, other, **kwargs)
+            x_interp, self_y_interp, self_yerr_interp, other_y_interp, other_yerr_interp = spectrum.math_helper(self, other, **kwargs)
             y_interp = self_y_interp-other_y_interp
-            return spectrum(x_interp, y_interp)
+            yerr_interp = (self_yerr_interp**2+other_yerr_interp**2)**0.5
+            return spectrum(x_interp, y_interp, yerr_interp)
         except:
             print 'BROKE'
 
@@ -75,6 +90,8 @@ class spectrum:
         ax.set_xlabel('Wavelength ($\AA$)')
         ax.set_ylabel('Flux')
         ax.plot(self.wav, self.flux, **kwargs)
+        if self.flux_err!= None:
+            ax.fill_between(self.wav, self.flux-self.flux_err, self.flux+self.flux_err, facecolor='cornflowerblue', linewidth=0.0)
         return ax
 
 def extract_counts(img, fiber_mask, fiber_num):
@@ -96,7 +113,7 @@ def extract_counts(img, fiber_mask, fiber_num):
 
     return counts
 
-def extract(fiber_mask, fiber_num, img, wvlsol):
+def simple_extraction(fiber_mask, fiber_num, img, wvlsol):
     '''
     Function that extracts a 1D spectrum for a specified fiber.
 
@@ -142,29 +159,33 @@ def optimal_extraction(image, fiber_mask, fnum, flat, wvlsol):
 
     rn = header['RDNOISE']
     g = header['GAIN']
-    dn = 0 #Eventually get from the hot pixel map.
+    dark_noise = fits.open('calib/master_calib/dark_err.fits')[0].data
+    gain = header['GAIN']
+    dark_noise /= gain
+    exptime = header['EXPTIME']
+    dark_noise *= exptime
+    dn = mask_fits(dark_noise, fiber_mask, maskval=fnum, reshape=True)
 
     one = np.ones_like(image)
-    err = (one*rn**2 + abs(g*image) + one*dn**2)**0.5
+    err = (one*rn**2 + abs(g*image) + dn**2)**0.5
 
     weights = 1/err**2
 
-    numerator = weights*flat*image
-    denominator = weights*flat**2
+    wfi = weights*flat*image
+    wff = weights*flat**2
 
     #Use the center of the fiber as the wavelength domain.
     center_i = wvlsol.shape[1]//2
     wvlsol_slices = [wvlsol[:,i] for i in range(len(wvlsol[0]))]
-    numerator_slices = [numerator[:,i] for i in range(len(numerator[0]))]
-    denominator_slices = [denominator[:,i] for i in range(len(denominator[0]))]
-    wavelength, numerator = interp_add(*zip(wvlsol_slices, numerator_slices), x_interp_i=center_i)
-    wavelength, denominator = interp_add(*zip(wvlsol_slices, denominator_slices), x_interp_i=center_i)
+    wfi_slices = [wfi[:,i] for i in range(len(wfi[0]))]
+    wff_slices = [wff[:,i] for i in range(len(wff[0]))]
+    wavelength, sum_wfi = interp_add(*zip(wvlsol_slices, wfi_slices), x_interp_i=center_i)
+    wavelength, sum_wff = interp_add(*zip(wvlsol_slices, wff_slices), x_interp_i=center_i)
 
-    flux = numerator/denominator
+    flux = sum_wfi/sum_wff
+    flux_err = 1/sum_wff**0.5
 
-    return spectrum(wavelength, flux)
-
-
+    return spectrum(wavelength, flux, flux_err)
 
 def get_x_interp(x_arrs, x_interp=None, x_interp_i=None, dx=None, **kwargs):
     if x_interp == None:

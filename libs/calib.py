@@ -17,8 +17,7 @@ def bias_correct(image, bias, fiber_mask=None):
         #reduced = (image-median(masked image)) - (bias-median(bias))
         if type(fiber_mask) != type(None):
             masked_image = mask_fits(image, fiber_mask, maskval=0, fillval=np.nan)
-            image = (image - np.nanmedian(masked_image)) \
-                        - (bias - np.median(bias))
+            image = (image - np.nanmedian(masked_image)) - (bias - np.median(bias))
         else:
             image = image - bias
 
@@ -35,6 +34,7 @@ def bias_correct(image, bias, fiber_mask=None):
         bias_subtracted_image[0].header['COMMENT'] = 'Bias corrected.'
 
     return bias_subtracted_image
+
 
 def dark_correct(image, exptime=None):
     dark_map = fits.open('calib/master_calib/dark_fit.fits')[0].data

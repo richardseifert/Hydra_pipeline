@@ -7,7 +7,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
-from extract_spectra import spectrum, extract, interp_mean, interp_median, optimal_extraction
+from extract_spectra import spectrum, interp_mean, interp_median, optimal_extraction
 from sys import stdout
 import os
 from os.path import exists
@@ -350,6 +350,7 @@ def target_dorecipe(r, dname, output=None):
         tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
         #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
         tar_spec = optimal_extraction(master_tar, fiber_mask, fnum, master_flat, wvlsol_map)
+        print 'boop'
         ts_path = outdata_dir+'/'+tar_ID+'.txt'
         if False:
             ax = tar_spec.plot(color='red', lw=1)
@@ -358,5 +359,7 @@ def target_dorecipe(r, dname, output=None):
         if False:
             master_sky_spec.plot(ax=ax, color='black', lw=1)
             tar_spec.plot(ax=ax, lw=1)
+        if True:
+            tar_spec.plot(lw=1, color='black')
         tar_spec.save(ts_path)
         output.edit_message('Target spectrum saved as '+ts_path)
