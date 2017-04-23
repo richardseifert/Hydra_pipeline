@@ -13,21 +13,25 @@ def unpack_xy(use_args='all', preserve=False):
                 use_args = [i for i in range(len(args))]
             dtype = None
             for i in use_args:
-                if isinstance(args[i], spectrum):
-                    x_arr, y_arr, yerr_arr = args[i].get_data()
-                    dtype = lambda w, f, ferr: spectrum(w, f, ferr)
-                    d = 1
-                elif len(args[i]) == 3:
-                    x_arr, y_arr, yerr_arr = args[i]
-                elif len(args[i]) == 2:
-                    x_arr, y_arr = args[i]
-                    yerr_arr = np.zeros_like(y_arr)
-                #Sort x and y
-                sort_i = np.argsort(x_arr)
-                y_arr = np.asarray(y_arr)[sort_i]
-                yerr_arr = np.asarray(yerr_arr)[sort_i]
-                x_arr = np.asarray(x_arr)[sort_i]
-                args[i] = [x_arr, y_arr, yerr_arr]
+                #if isinstance(args[i], spectrum):
+                #    if d<2:
+                #        dtype = lambda w, f, ferr=None, header=None: spectrum(w, f, ferr, header)  #Tried adding spectrum object to
+                #        d = 2
+                if isinstance(args[i], curve):
+                    dtype = lambda x, y, yerr=None: curve(x, y, yerr)
+                else:
+                    try:
+                        iter(args[i])
+                    except TypeError:
+                        continue
+                    if len(args[i]) == 3:
+                        x, y, yerr = args[i]
+                        args[i] = curve(x, y, yerr)
+                    elif len(args[i]) == 2:
+                        x, y = args[i]
+                        args[i] = curve(x, y)
+                    else:
+                        continue
             res = f(*args, **kwargs)
             if preserve and dtype != None:
                 res = dtype(*res)
@@ -35,53 +39,86 @@ def unpack_xy(use_args='all', preserve=False):
         return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
     return decorator
 
-class spectrum:
-    def __init__(self, wavelength, flux, flux_err=None, header=None):
-        self.wav = wavelength
-        self.flux = flux
-        if type(flux_err) == type(None):
-            self.flux_err = np.zeros_like(flux)
+class curve:
+    def __init__(self, x, y, yerr=None):
+        sort_i = np.argsort(x) #Sort data by x.
+        self.x = np.asarray(x)[sort_i]
+        self.y = np.asarray(y)[sort_i]
+        if type(yerr) == type(None):
+            self.yerr = np.zeros_like(y)[sort_i]
         else:
-            print 'bwaaa', flux_err, type(flux_err)
-            self.flux_err = flux_err
-        print np.nanmean(self.flux_err), 'MEAN ERROR!'
-        self.header = header
+            self.yerr = np.asarray(yerr)[sort_i]
+
+    def get_x(self):
+        return self.x
+    def get_y(self):
+        return self.y
+    def get_yerr(self):
+        return self.yerr
+    def get_data(self):
+        return self.x, self.y, self.yerr
+
+    @unpack_xy()
+    def math_helper(c1, c2, **kwargs):
+        if isinstance(c2, curve):
+            x_interp = get_x_interp([c1.x, c2.x], **kwargs)
+            c1_y_interp = interp1d(c1.x, c1.y)(x_interp)
+            c1_yerr_interp = interp1d(spec1.x, spec1.yerr)(x_interp)
+            c1_interp = curve(x_interp, c1_y_interp, c1_yerr_interp)
+
+            c2_y_interp = interp1d(c2.x, c2.y)(x_interp)
+            c2_yerr_interp = interp1d(c2.x, c2.yerr)(x_interp)
+            c2_interp = curve(x_interp, c2_y_interp, c2_yerr_interp)
+
+            return c1_interp, c2_interp
+        else:
+            return c1, curve(c1.x, c2*np.ones_like(c1.y))
+
+    def __add__(self, other, **kwargs):
+        self_interp, other_interp = curve.math_helper(self, other, **kwargs)
+        x_interp = self_interp.x
+        y_interp = self_interp.y+other_interp.y
+        yerr_interp = (self_interp.yerr**2+other_interp.yerr**2)**0.5
+        return curve(x_interp, y_interp, yerr_interp)
+    def __sub__(self, other, **kwargs):
+        self_interp, other_interp = curve.math_helper(self, other, **kwargs)
+        x_interp = self_interp.x
+        y_interp = self_interp.y-other_interp.y
+        yerr_interp = (self_interp.yerr**2+other_interp.yerr**2)**0.5
+        return curve(x_interp, y_interp, yerr_interp)
+    def __mul__(self, other, **kwargs):
+        self_interp, other_interp = curve.math_helper(self, other, **kwargs)
+        x_interp = self_interp.x
+        y_interp = self_interp.y*other_interp.y
+        yerr_interp = ((self_interp.yerr*other_interp.y)**2 + (other_interp.yerr*other_interp.y)**2)**0.5
+        return curve(x_interp, y_interp, yerr_interp)
+    def __div__(self, other, **kwargs):
+        self_interp, other_interp = curve.math_helper(self, other, **kwargs)
+        x_interp = self_interp.x
+        y_interp = self_interp.y/other_interp.y
+        yerr_interp = ((self_interp.yerr*other_interp.y)**2 + (other_interp.yerr*other_interp.y)**2)**0.5
+        return curve(x_interp, y_interp, yerr_interp)
+
+#04/20/17 12:50 | Need to work out inheritence of curve in the spectrum class.
+class spectrum(curve):
+    def __init__(self, wavelength, flux=None, flux_err=None, header=None):
+        if flux == None and isinstance(wavelength, curve):
+            input_curve = wavelength
+            curve.__init__(self, *input_curve.get_data())
+            self.header = header
+        else:
+            curve.__init__(self, wavelength, flux, flux_err)
+            self.header = header
     def set_header(self, new_header):
         self.header = new_header
     def get_wavelength(self):
-        return self.wav
+        return self.x
     def get_flux(self):
-        return self.flux
+        return self.y
+    def get_flux_err(self):
+        return self.yerr
     def get_data(self):
-        return [self.wav, self.flux, self.flux_err]
-    @unpack_xy()
-    def math_helper(spec1, spec2, **kwargs):
-        s1_x, s1_y, s1_yerr = spec1
-        s2_x, s2_y, s2_yerr = spec2
-        x_interp = get_x_interp([s1_x, s2_x], **kwargs)
-        s1_y_interp = interp1d(s1_x, s1_y)(x_interp)
-        s1_yerr_interp = interp1d(s1_x, s1_yerr)(x_interp)
-        s2_y_interp = interp1d(s2_x, s2_y)(x_interp)
-        s2_yerr_interp = interp1d(s2_x, s2_yerr)(x_interp)
-        return x_interp, s1_y_interp, s1_yerr_interp, s2_y_interp, s2_yerr_interp
-
-    def __add__(self, other, **kwargs):
-        try:
-            x_interp, self_y_interp, self_yerr_interp, other_y_interp, other_yerr_interp = spectrum.math_helper(self, other, **kwargs)
-            y_interp = self_y_interp+other_y_interp
-            yerr_interp = (self_yerr_interp**2+other_yerr_interp**2)**0.5
-            return spectrum(x_interp, y_interp, yerr_interp)
-        except:
-            print 'BROKE'
-    def __sub__(self, other, **kwargs):
-        try:
-            x_interp, self_y_interp, self_yerr_interp, other_y_interp, other_yerr_interp = spectrum.math_helper(self, other, **kwargs)
-            y_interp = self_y_interp-other_y_interp
-            yerr_interp = (self_yerr_interp**2+other_yerr_interp**2)**0.5
-            return spectrum(x_interp, y_interp, yerr_interp)
-        except:
-            print 'BROKE'
-
+        return [self.x, self.y, self.yerr]
     def save(self, savepath):
         np.savetxt(savepath, zip(*self.get_data()))
     def plot(self, ax=None, **kwargs):
@@ -89,10 +126,31 @@ class spectrum:
             fig, ax = plt.subplots()
         ax.set_xlabel('Wavelength ($\AA$)')
         ax.set_ylabel('Flux')
-        ax.plot(self.wav, self.flux, **kwargs)
-        if self.flux_err!= None:
-            ax.fill_between(self.wav, self.flux-self.flux_err, self.flux+self.flux_err, facecolor='cornflowerblue', linewidth=0.0)
+        ax.plot(self.x, self.y, **kwargs)
+        if self.yerr!= None:
+            ax.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, facecolor='cornflowerblue', linewidth=0.0)
         return ax
+def sum_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    sum_curve = interp_add(*spectra, **kwargs)
+    sum_spectrum = spectrum(sum_curve, header=header)
+    return sum_spectrum
+def median_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    median_curve = interp_median(*spectra, **kwargs)
+    median_spectrum = spectrum(median_curve, header=header)
+    return median_spectrum
+def mean_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    mean_curve = interp_mean(*spectra, **kwargs)
+    mean_spectrum = spectrum(mean_curve, header=header)
+    return mean_spectrum
 
 def extract_counts(img, fiber_mask, fiber_num):
     '''
@@ -223,8 +281,8 @@ def get_x_interp(x_arrs, x_interp=None, x_interp_i=None, dx=None, **kwargs):
 
 @unpack_xy()
 def interp_helper(*xy_curves, **kwargs):
-    x_arrs = [curve[0] for curve in xy_curves]
-    y_arrs = [curve[1] for curve in xy_curves]
+    x_arrs = [c.get_x() for c in xy_curves]
+    y_arrs = [c.get_y() for c in xy_curves]
 
     x_interp = get_x_interp(x_arrs=x_arrs, **kwargs)
 
@@ -250,3 +308,5 @@ def interp_median(*spectra, **kwargs):
     x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
     y_interp = np.nanmedian(y_interp_arrs, axis=0)
     return x_interp, y_interp
+
+#04-21-17 | Make a spectrum.median, spectrum.mean, spectrum.sum, etc.

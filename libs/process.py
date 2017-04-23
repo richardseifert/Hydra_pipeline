@@ -7,7 +7,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
-from extract_spectra import spectrum, interp_mean, interp_median, optimal_extraction
+from extract_spectra import spectrum, interp_mean, interp_median, optimal_extraction, sum_spectra, mean_spectra, median_spectra
 from sys import stdout
 import os
 from os.path import exists
@@ -244,19 +244,20 @@ def sky_dorecipe(r, dname, output=None):
     master_sky.writeto(ms_path, clobber=True)
     output.edit_message('Master sky frame saved at '+ms_path)
 
-    if False:
+    if True:
         fig, ax = plt.subplots()
     sky_specs = []
     for fnum in use_fibers:
         output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
         #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
         sky_spec = optimal_extraction(master_sky, fiber_mask, fnum, master_flat, wvlsol_map)
-        if False:
+        if True:
             sky_spec.plot(ax=ax, color='lightgrey', lw=1)
         sky_specs.append(sky_spec)
     output.edit_message('Producing master sky spectrum')
-    master_sky_spec = interp_median(*sky_specs)
-    if False:
+    #master_sky_spec = interp_median(*sky_specs)
+    master_sky_spec = median_spectra(sky_specs)
+    if True:
         master_sky_spec.plot(ax=ax, color='black', lw=1)
 
     mss_path = calib_dir+'/master_sky_spec.dat'
