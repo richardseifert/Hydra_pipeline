@@ -283,30 +283,40 @@ def get_x_interp(x_arrs, x_interp=None, x_interp_i=None, dx=None, **kwargs):
 def interp_helper(*xy_curves, **kwargs):
     x_arrs = [c.get_x() for c in xy_curves]
     y_arrs = [c.get_y() for c in xy_curves]
+    yerr_arrs = [c.get_yerr() for c in xy_curves]
 
     x_interp = get_x_interp(x_arrs=x_arrs, **kwargs)
 
     y_interp_arrs = np.zeros((len(y_arrs), len(x_interp)))
     for i in range(len(x_arrs)):
         y_interp_arrs[i,:] = interp1d(x_arrs[i], y_arrs[i], fill_value=(np.nan, np.nan))(x_interp)
-    return x_interp, y_interp_arrs
+    yerr_interp_arrs = np.zeros((len(yerr_arrs), len(x_interp)))
+    for i in range(len(x_arrs)):
+        yerr_interp_arrs[i,:] = interp1d(x_arrs[i], yerr_arrs[i], fill_value=(np.nan, np.nan))(x_interp)
+    return x_interp, y_interp_arrs, yerr_interp_arrs
 
 @unpack_xy(preserve=True)
 def interp_add(*spectra, **kwargs):
-    x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
+    x_interp, y_interp_arrs, yerr_interp_arrs = interp_helper(*spectra, **kwargs)
     y_interp = np.nansum(y_interp_arrs, axis=0)
+    yerr_interp = np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5
     return x_interp, y_interp
 
 @unpack_xy(preserve=True)
 def interp_mean(*spectra, **kwargs):
-    x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
+    x_interp, y_interp_arrs, yerr_interp_arrs = interp_helper(*spectra, **kwargs)
     y_interp = np.nanmean(y_interp_arrs, axis=0)
+    yerr_interp = np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5/N
     return x_interp, y_interp
 
 @unpack_xy(preserve=True)
 def interp_median(*spectra, **kwargs):
-    x_interp, y_interp_arrs = interp_helper(*spectra, **kwargs)
+    x_interp, y_interp_arrs, yerr_interp_arrs = interp_helper(*spectra, **kwargs)
     y_interp = np.nanmedian(y_interp_arrs, axis=0)
-    return x_interp, y_interp
+    N = len(y_interp_arrs)
+    yerr_interp = 1.253*np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5/N
+    fig, ax = plt.subplots()
+    ax.plot(x_interp, yerr_interp)
+    return x_interp, y_interp, yerr_interp
 
 #04-21-17 | Make a spectrum.median, spectrum.mean, spectrum.sum, etc.

@@ -251,7 +251,7 @@ def sky_dorecipe(r, dname, output=None):
         output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
         #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
         sky_spec = optimal_extraction(master_sky, fiber_mask, fnum, master_flat, wvlsol_map)
-        if True:
+        if False:
             sky_spec.plot(ax=ax, color='lightgrey', lw=1)
         sky_specs.append(sky_spec)
     output.edit_message('Producing master sky spectrum')
