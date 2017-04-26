@@ -7,7 +7,8 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
-from extract_spectra import spectrum, interp_mean, interp_median, optimal_extraction, sum_spectra, mean_spectra, median_spectra
+from extract import optimal_extraction
+from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra
 from sys import stdout
 import os
 from os.path import exists

@@ -1,9 +1,7 @@
 import numpy as np
+from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 plt.ion()
-from fitstools import mask_fits, row_avg, manage_dtype
-from scipy.interpolate import interp1d
-from astropy.io import fits
 
 def unpack_xy(use_args='all', preserve=False):
     def decorator(f):
@@ -99,152 +97,6 @@ class curve:
         yerr_interp = ((self_interp.yerr*other_interp.y)**2 + (other_interp.yerr*other_interp.y)**2)**0.5
         return curve(x_interp, y_interp, yerr_interp)
 
-#04/20/17 12:50 | Need to work out inheritence of curve in the spectrum class.
-class spectrum(curve):
-    def __init__(self, wavelength, flux=None, flux_err=None, header=None):
-        if flux == None and isinstance(wavelength, curve):
-            input_curve = wavelength
-            curve.__init__(self, *input_curve.get_data())
-            self.header = header
-        else:
-            curve.__init__(self, wavelength, flux, flux_err)
-            self.header = header
-    def set_header(self, new_header):
-        self.header = new_header
-    def get_wavelength(self):
-        return self.x
-    def get_flux(self):
-        return self.y
-    def get_flux_err(self):
-        return self.yerr
-    def get_data(self):
-        return [self.x, self.y, self.yerr]
-    def save(self, savepath):
-        np.savetxt(savepath, zip(*self.get_data()))
-    def plot(self, ax=None, **kwargs):
-        if ax == None:
-            fig, ax = plt.subplots()
-        ax.set_xlabel('Wavelength ($\AA$)')
-        ax.set_ylabel('Flux')
-        ax.plot(self.x, self.y, **kwargs)
-        if self.yerr!= None:
-            ax.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, facecolor='cornflowerblue', linewidth=0.0)
-        return ax
-def sum_spectra(spectra, header=None, **kwargs):
-    if header==None:
-        #Combine headers somehow
-        pass
-    sum_curve = interp_add(*spectra, **kwargs)
-    sum_spectrum = spectrum(sum_curve, header=header)
-    return sum_spectrum
-def median_spectra(spectra, header=None, **kwargs):
-    if header==None:
-        #Combine headers somehow
-        pass
-    median_curve = interp_median(*spectra, **kwargs)
-    median_spectrum = spectrum(median_curve, header=header)
-    return median_spectrum
-def mean_spectra(spectra, header=None, **kwargs):
-    if header==None:
-        #Combine headers somehow
-        pass
-    mean_curve = interp_mean(*spectra, **kwargs)
-    mean_spectrum = spectrum(mean_curve, header=header)
-    return mean_spectrum
-
-def extract_counts(img, fiber_mask, fiber_num):
-    '''
-    Function that extracts a 1D list of counts from a fiber.
-
-    ARGUMENTS
-    ----------------------------------------------------------------------------
-    img: A 2D array containing count information for each fiber.
-
-    fiber_mask: A 2D array that specifies the locations of fibers on the image,
-                img.
-
-    fiber_num: The integer ID of the fiber to be extracted. This should be an
-               existing fiber in the fiber_mask.
-    '''
-    fiber = mask_fits(img, fiber_mask, fiber_num)
-    counts = row_avg(fiber)
-
-    return counts
-
-def simple_extraction(fiber_mask, fiber_num, img, wvlsol):
-    '''
-    Function that extracts a 1D spectrum for a specified fiber.
-
-    ARGUMENTS:
-    ----------------------------------------------------------------------------
-    fiber_mask: A 2D array that specifies the locations of fibers on the image,
-                img.
-
-    fiber_num: The integer ID of the fiber to be extracted. This should be an
-               existing fiber in the fiber_mask.
-
-    img: A 2D array containing count information for each fiber.
-
-    wvlsol: A 2D array containing wavelength information for each fiber.
-    '''
-    #Extract the fiber from both the wavelength solution and the image.
-    fiber_counts = mask_fits(img, fiber_mask, fiber_num, reshape=True)
-    fiber_wvlsol = mask_fits(wvlsol, fiber_mask, fiber_num, reshape=True)
-
-
-    #Use the center of the fiber as the wavelength domain.
-    center_i = fiber_wvlsol.shape[1]//2
-    wavelength = fiber_wvlsol[:,center_i]
-    if wavelength[0] > wavelength[-1]:
-        wavelength = wavelength[::-1]
-
-    #After interpolating to the central wavelength domain, add up counts
-    # from each fiber slice.
-    wvlsol_slices = [fiber_wvlsol[:,i] for i in range(len(fiber_wvlsol[0]))]
-    counts_slices = [fiber_counts[:,i] for i in range(len(fiber_counts[0]))]
-    wavelength, flux = interp_add(*zip(wvlsol_slices, counts_slices), x_interp_i=center_i)
-
-    return spectrum(wavelength, flux)
-
-@manage_dtype(with_header=[0])
-def optimal_extraction(image, fiber_mask, fnum, flat, wvlsol):
-    header = image[1]
-    image = image[0]
-
-    image = mask_fits(image, fiber_mask, maskval=fnum, reshape=True)
-    flat = mask_fits(flat, fiber_mask, maskval=fnum, reshape=True)
-    wvlsol = mask_fits(wvlsol, fiber_mask, maskval=fnum, reshape=True)
-
-    rn = header['RDNOISE']
-    g = header['GAIN']
-    dark_noise = fits.open('calib/master_calib/dark_err.fits')[0].data
-    gain = header['GAIN']
-    dark_noise /= gain
-    exptime = header['EXPTIME']
-    dark_noise *= exptime
-    dn = mask_fits(dark_noise, fiber_mask, maskval=fnum, reshape=True)
-
-    one = np.ones_like(image)
-    err = (one*rn**2 + abs(g*image) + dn**2)**0.5
-
-    weights = 1/err**2
-
-    wfi = weights*flat*image
-    wff = weights*flat**2
-
-    #Use the center of the fiber as the wavelength domain.
-    center_i = wvlsol.shape[1]//2
-    wvlsol_slices = [wvlsol[:,i] for i in range(len(wvlsol[0]))]
-    wfi_slices = [wfi[:,i] for i in range(len(wfi[0]))]
-    wff_slices = [wff[:,i] for i in range(len(wff[0]))]
-    wavelength, sum_wfi = interp_add(*zip(wvlsol_slices, wfi_slices), x_interp_i=center_i)
-    wavelength, sum_wff = interp_add(*zip(wvlsol_slices, wff_slices), x_interp_i=center_i)
-
-    flux = sum_wfi/sum_wff
-    flux_err = 1/sum_wff**0.5
-
-    return spectrum(wavelength, flux, flux_err)
-
 def get_x_interp(x_arrs, x_interp=None, x_interp_i=None, dx=None, **kwargs):
     if x_interp == None:
         try:
@@ -319,4 +171,54 @@ def interp_median(*spectra, **kwargs):
     ax.plot(x_interp, yerr_interp)
     return x_interp, y_interp, yerr_interp
 
-#04-21-17 | Make a spectrum.median, spectrum.mean, spectrum.sum, etc.
+class spectrum(curve):
+    def __init__(self, wavelength, flux=None, flux_err=None, header=None):
+        if type(flux) == type(None) and isinstance(wavelength, curve):
+            input_curve = wavelength
+            curve.__init__(self, *input_curve.get_data())
+            self.header = header
+        else:
+            curve.__init__(self, wavelength, flux, flux_err)
+            self.header = header
+    def set_header(self, new_header):
+        self.header = new_header
+    def get_wavelength(self):
+        return self.x
+    def get_flux(self):
+        return self.y
+    def get_flux_err(self):
+        return self.yerr
+    def get_data(self):
+        return [self.x, self.y, self.yerr]
+    def save(self, savepath):
+        np.savetxt(savepath, zip(*self.get_data()))
+    def plot(self, ax=None, **kwargs):
+        if ax == None:
+            fig, ax = plt.subplots()
+        ax.set_xlabel('Wavelength ($\AA$)')
+        ax.set_ylabel('Flux')
+        ax.plot(self.x, self.y, **kwargs)
+        if self.yerr!= None:
+            ax.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, facecolor='cornflowerblue', linewidth=0.0)
+        return ax
+def sum_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    sum_curve = interp_add(*spectra, **kwargs)
+    sum_spectrum = spectrum(sum_curve, header=header)
+    return sum_spectrum
+def median_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    median_curve = interp_median(*spectra, **kwargs)
+    median_spectrum = spectrum(median_curve, header=header)
+    return median_spectrum
+def mean_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    mean_curve = interp_mean(*spectra, **kwargs)
+    mean_spectrum = spectrum(mean_curve, header=header)
+    return mean_spectrum
