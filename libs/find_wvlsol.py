@@ -8,7 +8,7 @@ from scipy.optimize import minimize
 import numpy as np
 from scipy.optimize import curve_fit
 from ngaussian import fit_ngaussian
-from extract_spectra import extract_counts
+from extract import extract_counts
 polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
 
 @manage_dtype(use_args=[0,1])
