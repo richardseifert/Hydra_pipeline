@@ -143,16 +143,31 @@ def slice(some_fits, xlo=None, xhi=None, ylo=None, yhi=None):
 @manage_dtype(with_header=True)
 def get_common_header(*args):
     list_of_fits = args
-    new_header = fits.PrimaryHDU(list_of_fits[0][0]).header
+    template_header = fits.PrimaryHDU(list_of_fits[0][0]).header
     headers = [f[1] for f in list_of_fits if f[1] != None]
+
     if len(headers) == 0:
-        return new_header
+        return template_header
+
+    new_header = common_header(headers, template_header)
+    return new_header
+
+def common_header(headers, template_header=None):
+    headers = filter(None, headers)
+    if len(headers) == 0:
+        return None
+
+    if template_header == None:
+        new_header = fits.PrimaryHDU(np.array([])).header
+    else:
+        new_header = template_header
+
     sample_header = headers[0]
     for card in sample_header.keys():
         useCard = True
         for h in headers:
             if (not card in h) or (h[card] != sample_header[card]):
-                useCardr = False
+                useCard = False
 
         if useCard:
             if card != 'COMMENT' and card != 'HISTORY' and card != '':
@@ -199,6 +214,15 @@ def save_2darr(data, savepath):
     p = fits.PrimaryHDU(data)
     hdulist = fits.HDUList(p)
     hdulist.writeto(savepath, clobber=True)
+
+def pad_array(arr, pad_val, length, pad='back'):
+    if pad == 'back':
+        while len(arr) < length:
+            arr = np.append(arr, pad_val)
+    elif pad == 'front':
+        while len(arr) < length:
+            arr = np.insert(arr, 0, pad_val)
+    return arr
 
 @manage_dtype()
 def mask_fits(some_fits, some_mask, maskval=1, fillval=0, reshape=False):
