@@ -245,20 +245,14 @@ def sky_dorecipe(r, dname, output=None):
     master_sky.writeto(ms_path, clobber=True)
     output.edit_message('Master sky frame saved at '+ms_path)
 
-    if True:
-        fig, ax = plt.subplots()
-    sky_specs = []
-    for fnum in use_fibers:
-        output.edit_message('Extracting sky spectrum from fiber '+str(fnum))
-        #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
-        sky_spec = optimal_extraction(master_sky, fiber_mask, fnum, master_flat, wvlsol_map)
-        if False:
-            sky_spec.plot(ax=ax, color='lightgrey', lw=1)
-        sky_specs.append(sky_spec)
+    output.edit_message('Extracting sky spectra.')
+    #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
+    sky_fibers = optimal_extraction(master_sky, fiber_mask, use_fibers, master_flat, wvlsol_map)
     output.edit_message('Producing master sky spectrum')
     #master_sky_spec = interp_median(*sky_specs)
-    master_sky_spec = median_spectra(sky_specs)
+    master_sky_spec = median_spectra(sky_fibers.get_spectra())
     if True:
+        fig, ax = plt.subplots()
         master_sky_spec.plot(ax=ax, color='black', lw=1)
 
     mss_path = calib_dir+'/master_sky_spec.dat'
@@ -347,21 +341,15 @@ def target_dorecipe(r, dname, output=None):
     output.edit_message('Master target frame saved at '+mt_path)
 
     header = master_tar[0].header
-    for fnum in use_fibers:
-        output.edit_message('Extracting target spectrum from fiber '+str(fnum))
-        tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
-        #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
-        tar_spec = optimal_extraction(master_tar, fiber_mask, fnum, master_flat, wvlsol_map)
-        print 'boop'
-        ts_path = outdata_dir+'/'+tar_ID+'.txt'
-        if False:
-            ax = tar_spec.plot(color='red', lw=1)
-            ax.set_title(str(fnum))
-        tar_spec = tar_spec - master_sky_spec
-        if False:
-            master_sky_spec.plot(ax=ax, color='black', lw=1)
-            tar_spec.plot(ax=ax, lw=1)
-        if True:
-            tar_spec.plot(lw=1, color='black')
-        tar_spec.save(ts_path)
-        output.edit_message('Target spectrum saved as '+ts_path)
+    output.edit_message('Extracting target spectra.')
+    #tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
+    #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
+    target_fibers = optimal_extraction(master_tar, fiber_mask, use_fibers, master_flat, wvlsol_map)
+    for i in range(len(target_fibers.get_spectra())):
+        spec = target_fibers[i] - master_sky_spec
+        #print spec.header
+        spec.plot()
+        target_fibers[i] = spec
+    ts_path = outdata_dir+'/target_spectra.fits'
+    target_fibers.save(ts_path)
+    output.edit_message('Target spectrum saved as '+ts_path)

@@ -2,6 +2,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 plt.ion()
+from astropy.io import fits
+from fitstools import common_header
 
 def unpack_xy(use_args='all', preserve=False):
     def decorator(f):
@@ -61,7 +63,7 @@ class curve:
         if isinstance(c2, curve):
             x_interp = get_x_interp([c1.x, c2.x], **kwargs)
             c1_y_interp = interp1d(c1.x, c1.y)(x_interp)
-            c1_yerr_interp = interp1d(spec1.x, spec1.yerr)(x_interp)
+            c1_yerr_interp = interp1d(c1.x, c1.yerr)(x_interp)
             c1_interp = curve(x_interp, c1_y_interp, c1_yerr_interp)
 
             c2_y_interp = interp1d(c2.x, c2.y)(x_interp)
@@ -176,10 +178,9 @@ class spectrum(curve):
         if type(flux) == type(None) and isinstance(wavelength, curve):
             input_curve = wavelength
             curve.__init__(self, *input_curve.get_data())
-            self.header = header
         else:
             curve.__init__(self, wavelength, flux, flux_err)
-            self.header = header
+        self.header = header
     def set_header(self, new_header):
         self.header = new_header
     def get_wavelength(self):
@@ -190,8 +191,49 @@ class spectrum(curve):
         return self.yerr
     def get_data(self):
         return [self.x, self.y, self.yerr]
+    def get_header(self):
+        return self.header
+    def __add__(self, other, header_i=None):
+        if header_i == None:
+            try:
+                headers = [self.header, other.header]
+                header = common_header(headers)
+            except AttributeError:
+                header = self.header
+        return spectrum(curve.__add__(self, other), header=header)
+    def __sub__(self, other, header_i=None):
+        if header_i == None:
+            try:
+                headers = [self.header, other.header]
+                header = common_header(headers)
+            except AttributeError:
+                header = self.header
+        return spectrum(curve.__sub__(self, other), header=header) #None is temp, REMOVE SOON
+    def __mul__(self, other, header_i=None):
+        if header_i == None:
+            try:
+                headers = [self.header, other.header]
+                header = common_header(headers)
+            except AttributeError:
+                header = self.header
+        return spectrum(curve.__mul__(self, other), header=header)
+    def __div__(self, other, header_i=None):
+        if header_i == None:
+            try:
+                headers = [self.header, other.header]
+                header = common_header(headers)
+            except AttributeError:
+                header = self.header
+        return spectrum(curve.__div__(self, other), header=header)
     def save(self, savepath):
-        np.savetxt(savepath, zip(*self.get_data()))
+        flux = fits.PrimaryHDU(self.get_flux(), self.get_header())
+        flux.header['EXTNAME'] = 'FLUX'
+        wavelength = fits.ImageHDU(self.get_wavelength())
+        wavelength.header['EXTNAME'] = 'WAVELENGTH'
+        flux_err = fits.ImageHDU(self.get_flux_err())
+        flux_err.header['EXTNAME'] = 'FLUX_ERR'
+        f = fits.HDUList([flux, wavelength, flux_err])
+        f.writeto(savepath, clobber=True)
     def plot(self, ax=None, **kwargs):
         if ax == None:
             fig, ax = plt.subplots()
