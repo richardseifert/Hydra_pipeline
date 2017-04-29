@@ -7,6 +7,8 @@ plots*
 stuff/
 *.tar
 
+libs/unittests
+
 recipes/*
 !recipes/.gitkeep
 indata/*

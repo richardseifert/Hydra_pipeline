@@ -169,8 +169,6 @@ def interp_median(*spectra, **kwargs):
     y_interp = np.nanmedian(y_interp_arrs, axis=0)
     N = len(y_interp_arrs)
     yerr_interp = 1.253*np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5/N
-    fig, ax = plt.subplots()
-    ax.plot(x_interp, yerr_interp)
     return x_interp, y_interp, yerr_interp
 
 class spectrum(curve):

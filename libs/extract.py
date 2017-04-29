@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()
-from fitstools import mask_fits, row_avg, manage_dtype, common_header, pad_array
+from fitstools import mask_fits, row_avg, manage_dtype, common_header, pad_array, display
 from spectra import spectrum, interp_add
 from astropy.io import fits
 
@@ -160,7 +160,6 @@ def optimal_extraction(image, fiber_mask, use_fibers, flat, wvlsol):
         fiber_h = h.copy()
         fiber_h['SLFIB'+str(int(fnum))] = APINFO[int(fnum)]
         spec = spectrum(wavelength, flux, flux_err, header=fiber_h)
-        spec.save('/Users/richardseifert/Desktop/WIYN/Hydra_reductions/testing_new/saved_spectra/saved.fits')
         res.add_spectrum(fnum, spec)
     res.save('/Users/richardseifert/Desktop/WIYN/Hydra_reductions/testing_new/saved_spectra/saved_fibers.fits')
 

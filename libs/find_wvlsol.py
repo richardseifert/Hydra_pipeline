@@ -51,6 +51,8 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
         comp_pix = np.arange(len(comp_counts), dtype=np.float64)
 
         #Find wavelength solution for fiber.
+        #fig, ax = plt.subplots()
+        #ax.plot(comp_pix, comp_counts)
         wsol = fiber_wvlsol(comp_pix, comp_counts, linelist, template_wvlsol, **kwargs)
 
         #Add individual wavelength solution to wvlsol_map
@@ -92,7 +94,6 @@ def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
         coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
         wsol = lambda x, c=coeffs: polynomial(x, *c)
         rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
-        #print 'Lowest chi-squared: '+str(rsqrd/len(peaks_pix))
         if rsqrd/n_used > 0.01:
             ignore_peaks_pix.append(n-1)
         else:

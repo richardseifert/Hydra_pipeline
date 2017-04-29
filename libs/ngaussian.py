@@ -113,10 +113,10 @@ def get_peak_center(xlist, ylist, i, prec=0.001):
     while high+1 < len(ylist) and ylist[high] > ylist[high+1]:
         high += 1
 
-    while high-low < 4:
-        low -= 1
+    while high-low<4:
+        if low > 0:
+            low -= 1
         high += 1
-
     region_x = xlist[low:high+1]
     region_y = ylist[low:high+1]
 

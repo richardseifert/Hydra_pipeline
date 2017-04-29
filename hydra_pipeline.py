@@ -5,9 +5,7 @@ from libs.output import output_log
 from libs.make_recipe import make_recipe
 try:
     import argh
-    print 'HAD IT'
 except ImportError:
-    print 'USING EXTERNAL'
     sys.path.append('external/')
     import argh
 
