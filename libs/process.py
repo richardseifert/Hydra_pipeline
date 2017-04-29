@@ -251,7 +251,7 @@ def sky_dorecipe(r, dname, output=None):
     output.edit_message('Producing master sky spectrum')
     #master_sky_spec = interp_median(*sky_specs)
     master_sky_spec = median_spectra(sky_fibers.get_spectra())
-    if True:
+    if False:
         fig, ax = plt.subplots()
         master_sky_spec.plot(ax=ax, color='black', lw=1)
 
@@ -321,8 +321,8 @@ def target_dorecipe(r, dname, output=None):
     mf.close()
 
     #Load in master sky spectrum.
-    mss = np.loadtxt(calib_dir+'/master_sky_spec.dat')
-    master_sky_spec = spectrum(mss[:,0], mss[:,1])
+    mss = fits.open(calib_dir+'/master_sky_spec.dat')
+    master_sky_spec = spectrum(mss[1].data, mss[0].data, mss[2].data)
     #master_sky_spec.plot()
 
     #Make master target frame
@@ -342,14 +342,14 @@ def target_dorecipe(r, dname, output=None):
 
     header = master_tar[0].header
     output.edit_message('Extracting target spectra.')
-    #tar_ID = filter(None, header['SLFIB'+str(fnum)].split(' '))[4]
-    #tar_spec = extract(fiber_mask, fnum, master_tar, wvlsol_map)
     target_fibers = optimal_extraction(master_tar, fiber_mask, use_fibers, master_flat, wvlsol_map)
+    ts_path = outdata_dir+'/target_spectra.fits'
+    target_fibers.save(ts_path)
+    output.edit_message('Target spectrum saved as '+ts_path)
     for i in range(len(target_fibers.get_spectra())):
         spec = target_fibers[i] - master_sky_spec
-        #print spec.header
-        spec.plot()
         target_fibers[i] = spec
-    ts_path = outdata_dir+'/target_spectra.fits'
+        
+    ts_path = outdata_dir+'/target_spectra_nosky.fits'
     target_fibers.save(ts_path)
     output.edit_message('Target spectrum saved as '+ts_path)
