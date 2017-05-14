@@ -44,10 +44,6 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     def f_wvlsol(fnum, template_wvlsol, wvlsol_map=wvlsol_map):
         #Extract comp spectrum in pixel space.
         comp_counts = extract_counts(comp, fiber_mask, fnum)
-        if False:
-            fig, ax = plt.subplots()
-            ax.plot(comp_counts)
-            ax.set_title('comp_counts')
         comp_pix = np.arange(len(comp_counts), dtype=np.float64)
 
         #Find wavelength solution for fiber.
@@ -80,10 +76,10 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
 
 def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
     #Find peaks in the fiber.
-    if False:
-        fig, ax = plt.subplots()
-        ax.plot(pix, counts, color='black', lw=1)
     std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
+    typical_counts = np.median(npeaks_counts)
+    diffs = [abs(c - typical_counts) for c in npeaks_counts]
+    npeaks_pix = np.asarray(npeaks_pix)[np.argsort(diffs)]
     n = min([5, npeaks])
     template_wvlsol = starter_wvlsol
     ignore_peaks_pix = []
@@ -104,17 +100,6 @@ def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
             keep_rsqrd = rsqrd
             keep_n_used = n_used
         n += 1
-
-    if False:
-        wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
-        fig, ax = plt.subplots()
-        ax.set_title('wvlsol, n_peaks = '+str(keep_n_used)+', $res^2$ = '+str(keep_rsqrd)+'$res^2/n_peaks$ = '+str(keep_rsqrd/keep_n_used))
-        ax.set_xlabel('Y_Pixel')
-        ax.set_ylabel('Wavelength ($\AA$)')
-        ax.scatter(keep_peaks_pix, keep_peaks_wvl)
-        pixfit = np.linspace(min(pix), max(pix), 10000)
-        countsfit = wsol(pixfit)
-        ax.plot(pixfit, countsfit)
 
     wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
     return wsol
@@ -224,6 +209,11 @@ def fit_poly(x, y, n):
            Starting with the coefficiant of x^n and ending with the coefficient
            of x^0.
     '''
+    use_n = min([n+1, len(x)])-1
+    print n, len(x), use_n
+    if use_n == 0:
+        return [0]*n
+    
     polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
     x = np.array(x)
     y = np.array(y)
@@ -232,5 +222,6 @@ def fit_poly(x, y, n):
     y = y[sort]
 
     slope = (y[-1]-y[0])/(x[-1]-x[0])
-    coeff, err = curve_fit(polynomial, x, y, p0=[0, slope]+(n-1)*[0])
+    coeff, err = curve_fit(polynomial, x, y, p0=[0, slope]+(use_n-1)*[0])
+    coeff = list(coeff) + [0]*(n-use_n)
     return coeff

@@ -51,15 +51,12 @@ def make_master_bias(dname, recipe=None, output=stdout):
 
 
 def process_flat(dname, recipe=None, output=stdout):
-    #output = output_log(log_path='calib/'+dname+'/output.log')
     flat_recipes = get_recipes(dname, recipe, rtype='flat')
     num_r = len(flat_recipes)
 
     for i,r in enumerate(flat_recipes):
         output.edit_progress('Processing '+dname+' flats: '+str(i+1)+'/'+str(num_r)+' |')
         output.edit_message("", add_to_log=False)
-        #output.write('\rProcessing '+dname+' flats: '+str(i+1)+'/'+str(num_r))
-        #output.flush()
         flat_dorecipe(r, dname, recipe, output)
 
 def flat_dorecipe(r, dname, recipe, output=None):
@@ -320,9 +317,7 @@ def target_dorecipe(r, dname, output=None):
     master_flat = mf[0].data
     mf.close()
 
-    #Load in master sky spectrum.
-    mss = fits.open(calib_dir+'/master_sky_spec.dat')
-    master_sky_spec = spectrum(mss[1].data, mss[0].data, mss[2].data)
+    
     #master_sky_spec.plot()
 
     #Make master target frame
@@ -346,10 +341,13 @@ def target_dorecipe(r, dname, output=None):
     ts_path = outdata_dir+'/target_spectra.fits'
     target_fibers.save(ts_path)
     output.edit_message('Target spectrum saved as '+ts_path)
-    for i in range(len(target_fibers.get_spectra())):
-        spec = target_fibers[i] - master_sky_spec
-        target_fibers[i] = spec
-        
-    ts_path = outdata_dir+'/target_spectra_nosky.fits'
-    target_fibers.save(ts_path)
-    output.edit_message('Target spectrum saved as '+ts_path)
+    if os.path.exists(calib_dir+'/master_sky_spec.dat'):
+    	#Load in master sky spectrum.
+    	mss = fits.open(calib_dir+'/master_sky_spec.dat')
+    	master_sky_spec = spectrum(mss[1].data, mss[0].data, mss[2].data)
+    	for i in range(len(target_fibers.get_spectra())):
+        	spec = target_fibers[i] - master_sky_spec
+        	target_fibers[i] = spec
+    	ts_path = outdata_dir+'/target_spectra_nosky.fits'
+    	target_fibers.save(ts_path)
+    	output.edit_message('Target spectrum saved as '+ts_path)

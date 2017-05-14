@@ -14,7 +14,7 @@ def make_throughput_map(fmask, mflat):
     #Correct for the profile of each flat fiber
     for fnum in fnums:
         flat_spec = row_avg(mask_fits(mflat, fmask, maskval=fnum))
-        medianf = np.median(flat_spec)
+        medianf = np.nanmedian(flat_spec)
         for i,counts in enumerate(flat_spec):
             throughput_map[i][np.where(fmask[i]==fnum)] *= flat_spec[i]/medianf
 
@@ -24,19 +24,10 @@ def make_throughput_map(fmask, mflat):
     flat_fiber_avg_vals = []
     for fnum in fnums:
         flat_spec = row_avg(mask_fits(profile_corrected_mflat, fmask, maskval=fnum))
-        avg_val = np.mean(flat_spec)
+        avg_val = np.nanmean(flat_spec)
         flat_fiber_avg_vals.append(avg_val)
-    medianf = np.median(flat_fiber_avg_vals)
+    medianf = np.nanmedian(flat_fiber_avg_vals)
     for f,fnum in zip(flat_fiber_avg_vals,fnums):
         throughput_map[np.where(fmask==fnum)] *= f/medianf
 
-    display(throughput_map)
-
-    plot=True
-    if plot:
-        throughput_corrected = mflat/throughput_map
-        fig, ax = plt.subplots()
-        for fnum in fnums:
-            flat_spec = row_avg(mask_fits(throughput_corrected, fmask, maskval=fnum))
-            ax.plot(flat_spec)
     return throughput_map

@@ -21,11 +21,6 @@ def bias_correct(image, bias, fiber_mask=None):
         else:
             image = image - bias
 
-        vals = image.flatten()
-        fig, ax = plt.subplots()
-        bins = np.linspace(-2000, 2000, 2000)
-        n, bins, patches = plt.hist(vals, bins=bins, facecolor='green', alpha=0.75)
-
         return image
 
     bias_subtracted_image = bc_helper(image, bias, fiber_mask)
@@ -43,7 +38,10 @@ def dark_correct(image, exptime=None):
     dark_map /= gain
 
     if exptime == None and type(image) == fits.hdu.hdulist.HDUList:
-        exptime = image[0].header['EXPTIME']
+        try:
+        	exptime = image[0].header['EXPTIME']
+        except KeyError:
+            exptime = 0.0
     else:
         raise ValueError('Cannot determine exposure time for dark subtraction.')
 

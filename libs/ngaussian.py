@@ -125,11 +125,6 @@ def get_peak_center(xlist, ylist, i, prec=0.001):
     xfit = np.arange(min(region_x)+prec/2, max(region_x)-prec/2, prec)
     yfit = peak(xfit)
 
-    if False:
-        fig, ax = plt.subplots()
-        ax.scatter(region_x, region_y)
-        ax.plot(xfit, yfit, color='red')
-
     #Find the peak center from spline fit.
     center_x = xfit[list(yfit).index(max(yfit))]
 
