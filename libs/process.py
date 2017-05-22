@@ -14,6 +14,95 @@ import os
 from os.path import exists
 import time
 from calib import calibrate
+from make_recipe import load_recipes
+
+class processor(object):
+	def __init__(self, dname, recipes=None, output=None):
+		self.dname=dname
+		if recipes==None:
+			recipes = 'recipes/'+self.dname+'.recipe'
+		if os.path.exists(recipes):
+			self.recipes = load_recipes(recipes)
+		else:
+			raise OSError("Recipe file not found: "+recipes)
+		self.output=output
+		self.init_dirs()
+	def init_dirs(self):
+		self.indata = 'indata/'+dname
+		if not os.path.exists(self.indata):
+			raise OSError("Indata folder "+self.indata+" not found.")
+    	self.calib = 'calib/'+dname
+    	ensure_path(self.calib+'/')
+    	self.calib_dirs = {}
+    	for gnum in list({r.gnum for r in self.recipes}):
+    		self.calib_dirs[gnum] = self.calib+'group'+str(gnum)
+    		ensure_path(self.calib_dirs[gnum])
+    	self.outdata = 'outdata/'+dname
+    	ensure_path(self.outdata+'/')
+	def get_recipes(self, gnum=None, rtype=None):
+    	return [r for r in self.recipes if (gnum != None and gnum == r.gnum) and (rtype != None and rtype == r.rtype)]
+	def make_master_bias(self):
+		bias_recipes = self.get_recipes(rtype='zero')
+
+		filenames = []
+		for r in bias_recipes:
+			info = r.split(',')
+			fnames = info[2].split(' ')
+			filenames.extend(fnames)
+
+		if len(filenames) > 0:
+			#Load files and create master bias
+			biases = [fits.open(self.indata+'/'+fname) for fname in filenames]
+			self.master_bias = combine(*biases, method='mean')
+			self.master_bias.writeto(self.calib+'/master_bias.fits', clobber=True)
+			for f in biases:
+				f.close()
+	def get_master_bias(self):
+		try:
+			return self.master_bias
+		except AttributeError:
+			mb_path = self.calib+'/master_bias.fits'
+			if os.path.exists(mb_path):
+				mb = fits.open(mb_path)
+				self.master_bias = mb[0].data
+				mb.close()
+			else:
+				self.make_master_bias()
+			return self.master_bias
+    
+class process_flat(processor):
+	def __init__(dname, recipes=None, output=None):
+		processor.__init__(self, dname, recipes=recipes, output=output)
+	
+	def dispatch(self):
+		master_bias = self.get_master_bias()
+		for r in self.get_recipes(rtype='flat'):
+			flats = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
+			master_flat = combine(*flats)
+    		for flat in flats:
+        		flat.close()
+        	mf_path = self.calib_dirs[r.gnum]+'/master_flat.fits'
+    		master_flat.writeto(mf_path, clobber=True)
+    		
+    		#Find fibers, make fiber mask, save to directory
+    		output.edit_message('Locating fibers.')
+    		fiber_mask = find_fibers(master_flat, use_fibers)
+    		fm_path = self.calib_dirs[r.gnum]+'/fiber_mask.fits'
+    		fits.writeto(fm_path, fiber_mask, clobber=True)
+    		output.edit_message('Fiber mask saved at '+fm_path)
+    		
+    		#Calibrate master flat
+    		output.edit_message('Bias correcting master flat frame.')
+    		master_flat = calibrate(master_flat, master_bias, fiber_mask, lacosmic=False)
+    		
+    		#Generate a fiber thoughput map.
+    		output.edit_message('Generating throughput map.')
+    		throughput_map = make_throughput_map(fiber_mask, master_flat)
+    		tm_path = calib_dir+'/throughput_map.fits'
+    		fits.writeto(tm_path, throughput_map, clobber=True)
+    		output.edit_message('Throughput map saved at '+tm_path)
+		
+		
 
 def get_recipes(dname, recipe=None, gnum=None, rtype=None):
     if recipe == None:
