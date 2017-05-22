@@ -17,7 +17,8 @@ def recipe_log(direc):
     make_recipe(data_loc, save_path)
 
 def flat(direc, recipe=None):
-    process.process_flat(direc, recipe, output=output)
+    #process.process_flat(direc, recipe, output=output)
+    process.process_flat(direc, recipe, output_log=output).dispatch()
 
 def thar(direc, recipe=None, fast=False):
     process.process_thar(direc, recipe, output=output, fast=fast)

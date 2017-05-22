@@ -17,7 +17,13 @@ from calib import calibrate
 from make_recipe import load_recipes
 
 class processor(object):
-	def __init__(self, dname, recipes=None, output=None):
+	cp_fnames = {'master_bias':'master_bias.fits',
+							 'master_flat':'master_flat.fits',
+							 'fiber_mask':'fiber_mask.fits',
+							 'throughput_map':'throughput_map.fits',
+							 'wavelength_solution':'wvlsol.fits',
+							 'master_sky_spec':'master_sky_spec.fits'}
+	def __init__(self, dname, recipes=None, output_log=None):
 		self.dname=dname
 		if recipes==None:
 			recipes = 'recipes/'+self.dname+'.recipe'
@@ -25,31 +31,60 @@ class processor(object):
 			self.recipes = load_recipes(recipes)
 		else:
 			raise OSError("Recipe file not found: "+recipes)
-		self.output=output
+		self.output_log=output_log
 		self.init_dirs()
 	def init_dirs(self):
-		self.indata = 'indata/'+dname
+		self.indata = 'indata/'+self.dname
 		if not os.path.exists(self.indata):
 			raise OSError("Indata folder "+self.indata+" not found.")
-    	self.calib = 'calib/'+dname
-    	ensure_path(self.calib+'/')
-    	self.calib_dirs = {}
-    	for gnum in list({r.gnum for r in self.recipes}):
-    		self.calib_dirs[gnum] = self.calib+'group'+str(gnum)
-    		ensure_path(self.calib_dirs[gnum])
-    	self.outdata = 'outdata/'+dname
-    	ensure_path(self.outdata+'/')
+		self.calib = 'calib/'+self.dname
+		ensure_path(self.calib+'/')
+		self.calib_dirs = {}
+		for gnum in list({r.gnum for r in self.recipes}):
+			self.calib_dirs[gnum] = self.calib+'/group'+str(gnum)
+			ensure_path(self.calib_dirs[gnum])
+			self.outdata = 'outdata/'+self.dname
+		ensure_path(self.outdata+'/')
+		
+	def load_calib_products(self, gnum):
+		for product in self.cp_fnames.keys():
+			print 'ATTEMPTIN TO LOAD '+product
+			fpath = None
+			if os.path.exists(self.calib_dirs[gnum]+'/'+self.cp_fnames[product]):
+				fpath = self.calib_dirs[gnum]+'/'+self.cp_fnames[product]
+				print 'FOUND '+product+' IN GROUP CALIB DIRECTORY'
+			elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
+				fpath = self.calib+'/'+self.cp_fnames[product]
+				print 'FOUND '+product+' IN GENERAL CALIB DIRECTORY'
+			if fpath != None:
+				f = fits.open(fpath)
+				if product != 'master_sky_spec':
+					print 'LOADING '+product+' AS 2D ARRAY'
+					d = f[0].data
+				else:
+					print 'LOADING '+product+' AS SPECTRUM'
+					d = spectrum(f[1].data, f[0].data, f[2].data)
+				f.close()
+				setattr(self, product, d)
+			else:
+				print 'DID NOT FIND '+product
+				 
+	def output(self, message=None, progress=None):
+		if self.output_log != None:
+			if message!=None:
+				self.output_log.edit_message(message)
+			if progress!=None:
+				self.output_log.edit_progress(progress)
 	def get_recipes(self, gnum=None, rtype=None):
-    	return [r for r in self.recipes if (gnum != None and gnum == r.gnum) and (rtype != None and rtype == r.rtype)]
+		return [r for r in self.recipes if (gnum == None or gnum == r.gnum) and (rtype == None or rtype == r.rtype)]
 	def make_master_bias(self):
+		self.output('Generating master bias frame.')
 		bias_recipes = self.get_recipes(rtype='zero')
-
 		filenames = []
 		for r in bias_recipes:
 			info = r.split(',')
 			fnames = info[2].split(' ')
 			filenames.extend(fnames)
-
 		if len(filenames) > 0:
 			#Load files and create master bias
 			biases = [fits.open(self.indata+'/'+fname) for fname in filenames]
@@ -71,36 +106,37 @@ class processor(object):
 			return self.master_bias
     
 class process_flat(processor):
-	def __init__(dname, recipes=None, output=None):
-		processor.__init__(self, dname, recipes=recipes, output=output)
+        def __init__(self, dname, recipes=None, output_log=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
 	
-	def dispatch(self):
-		master_bias = self.get_master_bias()
-		for r in self.get_recipes(rtype='flat'):
-			flats = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
-			master_flat = combine(*flats)
-    		for flat in flats:
-        		flat.close()
-        	mf_path = self.calib_dirs[r.gnum]+'/master_flat.fits'
-    		master_flat.writeto(mf_path, clobber=True)
+        def dispatch(self):
+            master_bias = self.get_master_bias()
+            for i,r in enumerate(self.get_recipes(rtype='flat')):
+                self.output(message='Generating master flat frame.', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+                flats = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
+                master_flat = combine(*flats)
+                for flat in flats:
+                    flat.close()
+                mf_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_flat']
+                master_flat.writeto(mf_path, clobber=True)
     		
-    		#Find fibers, make fiber mask, save to directory
-    		output.edit_message('Locating fibers.')
-    		fiber_mask = find_fibers(master_flat, use_fibers)
-    		fm_path = self.calib_dirs[r.gnum]+'/fiber_mask.fits'
-    		fits.writeto(fm_path, fiber_mask, clobber=True)
-    		output.edit_message('Fiber mask saved at '+fm_path)
+                #Find fibers, make fiber mask, save to directory
+                self.output('Locating fibers.')
+                fiber_mask = find_fibers(master_flat, r.fibers)
+                fm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['fiber_mask']
+                fits.writeto(fm_path, fiber_mask, clobber=True)
+                self.output('Fiber mask saved at '+fm_path)
     		
-    		#Calibrate master flat
-    		output.edit_message('Bias correcting master flat frame.')
-    		master_flat = calibrate(master_flat, master_bias, fiber_mask, lacosmic=False)
+                #Calibrate master flat
+                self.output('Bias correcting master flat frame.')
+                master_flat = calibrate(master_flat, master_bias, fiber_mask, lacosmic=False)
     		
-    		#Generate a fiber thoughput map.
-    		output.edit_message('Generating throughput map.')
-    		throughput_map = make_throughput_map(fiber_mask, master_flat)
-    		tm_path = calib_dir+'/throughput_map.fits'
-    		fits.writeto(tm_path, throughput_map, clobber=True)
-    		output.edit_message('Throughput map saved at '+tm_path)
+                #Generate a fiber thoughput map.
+                self.output('Generating throughput map.')
+                throughput_map = make_throughput_map(fiber_mask, master_flat)
+                tm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['throughput_map']
+                fits.writeto(tm_path, throughput_map, clobber=True)
+                self.output('Throughput map saved at '+tm_path)
 		
 		
 
@@ -138,7 +174,7 @@ def make_master_bias(dname, recipe=None, output=stdout):
             for f in biases:
                 f.close()
 
-
+'''
 def process_flat(dname, recipe=None, output=stdout):
     flat_recipes = get_recipes(dname, recipe, rtype='flat')
     num_r = len(flat_recipes)
@@ -147,7 +183,7 @@ def process_flat(dname, recipe=None, output=stdout):
         output.edit_progress('Processing '+dname+' flats: '+str(i+1)+'/'+str(num_r)+' |')
         output.edit_message("", add_to_log=False)
         flat_dorecipe(r, dname, recipe, output)
-
+'''
 def flat_dorecipe(r, dname, recipe, output=None):
     #Unpack info from recipe line.
     output.edit_message('Reading recipe.')
@@ -200,9 +236,10 @@ def flat_dorecipe(r, dname, recipe, output=None):
     tm_path = calib_dir+'/throughput_map.fits'
     fits.writeto(tm_path, throughput_map, clobber=True)
     output.edit_message('Throughput map saved at '+tm_path)
+    
+    #Generate a fiber profile map.
 
 def process_thar(dname, recipe=None, output=stdout, **kwargs):
-    #output = output_log(log_path='calib/'+dname+'/output.log')
     thar_recipes = get_recipes(dname, recipe, rtype='comp')
 
     num_r = len(thar_recipes)

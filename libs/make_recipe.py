@@ -5,13 +5,13 @@ class recipe(object):
 		info = strg.split(delimiter)
 		self.gnum = info[0]
 		self.rtype = info[1]
-		self.filenames = info[2].split(list_delimiter)
-		self.fibers = [int(s) for s in info[3].split(list_delimiter)]
+		self.filenames = filter(None, info[2].split(list_delimiter))
+		self.fibers = [int(s) for s in filter(None, info[3].split(list_delimiter))]
 
 def load_recipes(filename):
 	f = open(filename)
-	recipe_lines = f.read().split('\n')
-	return [recipe(line) for line in recipe_lines]
+	recipe_lines = filter(None, f.read().split('\n'))
+	return [recipe(line) for line in recipe_lines if line[0]!='#']
 	
 def make_recipe(direc, savepath):
     recipe = open(savepath, 'w')
