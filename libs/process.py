@@ -103,7 +103,7 @@ def flat_dorecipe(r, dname, recipe, output=None):
 
     #Calibrate master flat
     output.edit_message('Bias correcting master flat frame.')
-    master_flat = calibrate(master_flat, master_bias, fiber_mask)
+    master_flat = calibrate(master_flat, master_bias, fiber_mask, lacosmic=False)
 
     #Generate a fiber thoughput map.
     output.edit_message('Generating throughput map.')
@@ -232,6 +232,7 @@ def sky_dorecipe(r, dname, output=None):
     skys = [fits.open(indata_dir+'/'+filename) for filename in filenames]
     output.edit_message('Median combining sky frames.')
     master_sky = combine(*skys)
+    master_sky.writeto('plots/lacosmic/master_sky.fits', clobber=True)
     for sky in skys:
         sky.close()
     output.edit_message('Bias correcting master sky frame.')
@@ -317,7 +318,6 @@ def target_dorecipe(r, dname, output=None):
     master_flat = mf[0].data
     mf.close()
 
-    
     #master_sky_spec.plot()
 
     #Make master target frame
