@@ -1,5 +1,18 @@
 from group_obs import group_obs
 
+class recipe(object):
+	def __init__(self, strg, delimiter=',', list_delimiter=' '):
+		info = strg.split(delimiter)
+		self.gnum = info[0]
+		self.rtype = info[1]
+		self.filenames = info[2].split(list_delimiter)
+		self.fibers = [int(s) for s in info[3].split(list_delimiter)]
+
+def load_recipes(filename):
+	f = open(filename)
+	recipe_lines = f.read().split('\n')
+	return [recipe(line) for line in recipe_lines]
+	
 def make_recipe(direc, savepath):
     recipe = open(savepath, 'w')
     recipe.write('#GROUP_NUM,IMAGE_TYPE,FILE_NAMES,FIBER_NUMBERS\n')
