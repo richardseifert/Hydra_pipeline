@@ -67,8 +67,8 @@ def get_dtype(*list_of_fits, **kwargs):
     return dtypes[dtype_i]
 
 def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=False):
-    dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
-              lambda data: fits.PrimaryHDU(data),
+    dtypes = [lambda data,header=None: fits.HDUList(fits.PrimaryHDU(data,header)),
+              lambda data,header=None: fits.PrimaryHDU(data,header),
               lambda data: data]
     def decorator(f):
         def wrapper(use_args, *args, **kwargs):
@@ -95,15 +95,23 @@ def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=Fal
                 if type(res) == list:
                     for i, r in enumerate(res):
                         try:
+                            if len(r) == 2:
+                        	    r,header = r
+                            else:
+                        	    header=None
                             if len(r.shape) == 2:
-                                res[i] = dtype(res[i])
-                        except AttributeError:
+                                res[i] = dtype(r,header)
+                        except TypeError,AttributeError:
                             pass
                 else:
                     try:
+                    	if len(res) == 2:
+                    	    res,header = res
+                    	else:
+                    	    header = None
                         if len(res.shape) == 2:
-                            res = dtype(res)
-                    except AttributeError:
+                            res = dtype(res,header)
+                    except TypeError,AttributeError:
                         pass
             return res
         return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
