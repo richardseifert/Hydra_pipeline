@@ -18,11 +18,11 @@ from make_recipe import load_recipes
 
 class processor(object):
 	cp_fnames = {'master_bias':'master_bias.fits',
-							 'master_flat':'master_flat.fits',
-							 'fiber_mask':'fiber_mask.fits',
-							 'throughput_map':'throughput_map.fits',
-							 'wavelength_solution':'wvlsol.fits',
-							 'master_sky_spec':'master_sky_spec.fits'}
+                     'master_flat':'master_flat.fits',
+                     'fiber_mask':'fiber_mask.fits',
+                     'throughput_map':'throughput_map.fits',
+                     'wavelength_solution':'wvlsol.fits',
+                     'master_sky_spec':'master_sky_spec.fits'}
 	def __init__(self, dname, recipes=None, output_log=None):
 		self.dname=dname
 		if recipes==None:
@@ -40,35 +40,36 @@ class processor(object):
 		self.calib = 'calib/'+self.dname
 		ensure_path(self.calib+'/')
 		self.calib_dirs = {}
-		for gnum in list({r.gnum for r in self.recipes}):
-			self.calib_dirs[gnum] = self.calib+'/group'+str(gnum)
-			ensure_path(self.calib_dirs[gnum])
-			self.outdata = 'outdata/'+self.dname
-		ensure_path(self.outdata+'/')
+                self.outdata = 'outdata/'+self.dname
+                ensure_path(self.outdata+'/')
+                self.outdata_dirs = {}
+                for gnum in list({r.gnum for r in self.recipes}):
+                    self.calib_dirs[gnum] = self.calib+'/group'+str(gnum)
+                    ensure_path(self.calib_dirs[gnum])
+                    self.outdata_dirs[gnum] = self.outdata+'/group'+str(gnum)
+                    ensure_path(self.outdata_dirs[gnum])
 		
 	def load_calib_products(self, gnum):
 		for product in self.cp_fnames.keys():
-			print 'ATTEMPTIN TO LOAD '+product
+			#print 'ATTEMPTIN TO LOAD '+product
 			fpath = None
 			if os.path.exists(self.calib_dirs[gnum]+'/'+self.cp_fnames[product]):
 				fpath = self.calib_dirs[gnum]+'/'+self.cp_fnames[product]
-				print 'FOUND '+product+' IN GROUP CALIB DIRECTORY'
+				#print 'FOUND '+product+' IN GROUP CALIB DIRECTORY'
 			elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
 				fpath = self.calib+'/'+self.cp_fnames[product]
-				print 'FOUND '+product+' IN GENERAL CALIB DIRECTORY'
+				#print 'FOUND '+product+' IN GENERAL CALIB DIRECTORY'
 			if fpath != None:
 				f = fits.open(fpath)
 				if product != 'master_sky_spec':
-					print 'LOADING '+product+' AS 2D ARRAY'
+					#print 'LOADING '+product+' AS 2D ARRAY'
 					d = f[0].data
 				else:
-					print 'LOADING '+product+' AS SPECTRUM'
+					#print 'LOADING '+product+' AS SPECTRUM'
 					d = spectrum(f[1].data, f[0].data, f[2].data)
 				f.close()
 				setattr(self, product, d)
-			else:
-				print 'DID NOT FIND '+product
-				 
+
 	def output(self, message=None, progress=None):
 		if self.output_log != None:
 			if message!=None:
@@ -137,9 +138,113 @@ class process_flat(processor):
                 tm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['throughput_map']
                 fits.writeto(tm_path, throughput_map, clobber=True)
                 self.output('Throughput map saved at '+tm_path)
-		
-		
 
+class process_thar(processor):
+        def __init__(self, dname, recipes=None, output_log=None, fast=False):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+            self.fast=fast
+	
+        def dispatch(self):
+                master_bias = self.get_master_bias()
+                for n,r in enumerate(self.get_recipes(rtype='comp')):
+                    self.load_calib_products(r.gnum)
+                    self.output(message='', progress='Processing '+self.dname+' flats: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+                    wvlsol_maps = []
+                    for i,fname in enumerate(r.filenames):
+                        self.output('Finding wavelength solution from '+fname)
+                        comp = fits.open(self.indata+'/'+fname)
+                        comp = calibrate(comp, master_bias, self.fiber_mask)
+                        comp[0].data = comp[0].data / self.throughput_map
+                        wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, fast=self.fast)
+                        wvlsol_maps.append(wvlsol_map)
+                        ws_path = self.calib_dirs[r.gnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
+                        fits.writeto(ws_path, wvlsol_map, clobber=True)
+                        self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
+                    master_wvlsol = np.mean(wvlsol_maps, axis=0)
+                    mws_path = self.calib_dirs[r.gnum]+'/wvlsol.fits'
+                    fits.writeto(mws_path, master_wvlsol, clobber=True)
+                    self.output('Master Wavelength solution saved at '+mws_path)
+		
+class process_sky(processor):
+        def __init__(self, dname, recipes=None, output_log=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+	
+        def dispatch(self):
+            master_bias = self.get_master_bias()
+            for i,r in enumerate(self.get_recipes(rtype='sky')):
+                self.load_calib_products(r.gnum)
+                self.output(message='', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+
+                #Make master sky frame
+                self.output('Loading sky frames.')
+                skys = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
+                self.output('Median combining sky frames.')
+                master_sky = combine(*skys)
+                master_sky.writeto('plots/lacosmic/master_sky.fits', clobber=True)
+                for sky in skys:
+                    sky.close()
+                self.output('Bias correcting master sky frame.')
+                master_sky = calibrate(master_sky, master_bias, self.fiber_mask)
+                self.output('Throughput correcting master sky frame.')
+                #master_sky[0].data /= throughput_map
+                ms_path = self.calib_dirs[r.gnum]+'/master_sky.fits'
+                master_sky.writeto(ms_path, clobber=True)
+                self.output('Master sky frame saved at '+ms_path)
+
+                self.output('Extracting sky spectra.')
+                #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map)
+                sky_fibers = optimal_extraction(master_sky, self.fiber_mask, r.fibers, self.master_flat, self.wavelength_solution)
+                self.output('Producing master sky spectrum')
+                #master_sky_spec = interp_median(*sky_specs)
+                master_sky_spec = median_spectra(sky_fibers.get_spectra())
+                mss_path = self.calib_dirs[r.gnum]+'/master_sky_spec.dat'
+                master_sky_spec.save(mss_path)
+                self.output('Master sky spectrum saved at '+mss_path)
+
+class process_target(processor):
+        def __init__(self, dname, recipes=None, output_log=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+	
+        def dispatch(self):
+            master_bias = self.get_master_bias()
+            for i,r in enumerate(self.get_recipes(rtype='object')):
+                self.load_calib_products(r.gnum)
+                self.output(message='', progress='Processing '+self.dname+' targets: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='object')))+' |')
+
+                #Make master target frame
+                self.output('Loading target frames.')
+                tars = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
+                self.output('Median combining target frames.')
+                master_tar = combine(*tars)
+                for f in tars:
+                    f.close()
+                self.output('Bias correcting master target frame.')
+                master_tar = calibrate(master_tar, master_bias)
+                self.output('Throughput correcting master target frame.')
+                #master_tar[0].data /= throughput_map
+                mt_path = self.calib_dirs[r.gnum]+'/master_target_frame.fits'
+                master_tar.writeto(mt_path, clobber=True)
+                self.output('Master target frame saved at '+mt_path)
+
+                header = master_tar[0].header
+                self.output('Extracting target spectra.')
+                target_fibers = optimal_extraction(master_tar, self.fiber_mask, r.fibers, self.master_flat, self.wavelength_solution)
+                ts_path = self.outdata_dirs[r.gnum]+'/target_spectra.fits'
+                target_fibers.save(ts_path)
+                self.output('Target spectrum saved as '+ts_path)
+                try:
+                    #Subtract master sky spectrum.
+                    self.output('Subtracting sky spectrum from target spectra.')
+                    for i in range(len(target_fibers.get_spectra())):
+                            spec = target_fibers[i] - self.master_sky_spec
+                            target_fibers[i] = spec
+                    ts_path = self.outdata_dirs[r.gnum]+'/target_spectra_nosky.fits'
+                    target_fibers.save(ts_path)
+                    self.output('Target spectrum saved as '+ts_path)
+                except AttributeError:
+                    self.output('No master sky spectrum found. Skipping sky subtraction.')
+
+                
 def get_recipes(dname, recipe=None, gnum=None, rtype=None):
     if recipe == None:
         recipe = 'recipes/'+dname+'.recipe'
@@ -239,6 +344,7 @@ def flat_dorecipe(r, dname, recipe, output=None):
     
     #Generate a fiber profile map.
 
+'''
 def process_thar(dname, recipe=None, output=stdout, **kwargs):
     thar_recipes = get_recipes(dname, recipe, rtype='comp')
 
@@ -247,6 +353,7 @@ def process_thar(dname, recipe=None, output=stdout, **kwargs):
         output.edit_progress('Processing '+dname+' thar: '+str(i+1)+'/'+str(num_r)+' |')
         output.edit_message('')
         thar_dorecipe(r, dname, output, **kwargs)
+'''
 
 def thar_dorecipe(r, dname, output=None, **kwargs):
     output.edit_message('Reading thar recipe.')
@@ -295,6 +402,7 @@ def thar_dorecipe(r, dname, output=None, **kwargs):
     fits.writeto(mws_path, master_wvlsol, clobber=True)
     output.edit_message('Master Wavelength solution saved at '+mws_path)
 
+'''
 def process_sky(dname, recipe=None, output=stdout):
     #output = output_log(log_path='calib/'+dname+'/output.log')
     sky_recipes = get_recipes(dname, recipe, rtype='sky')
@@ -304,6 +412,7 @@ def process_sky(dname, recipe=None, output=stdout):
         output.edit_progress('Processing '+dname+' sky: '+str(i+1)+'/'+str(num_r)+' |')
         output.edit_message('')
         sky_dorecipe(r, dname, output)
+'''
 
 def sky_dorecipe(r, dname, output=None):
     #Unpack info from the recipe line.
@@ -383,7 +492,7 @@ def sky_dorecipe(r, dname, output=None):
     master_sky_spec.save(mss_path)
     output.edit_message('Master sky spectrum saved at '+mss_path)
 
-
+'''
 def process_target(dname, recipe=None, output=stdout):
     #output = output_log(log_path='calib/'+dname+'/output.log')
     tar_recipes = get_recipes(dname, recipe, rtype='object')
@@ -393,6 +502,7 @@ def process_target(dname, recipe=None, output=stdout):
         output.edit_progress('Processing '+dname+' targets: '+str(i+1)+'/'+str(num_r)+' |')
         output.edit_message('')
         target_dorecipe(r, dname, output)
+'''
 
 def target_dorecipe(r, dname, output=None):
     #Unpack info from the recipe line.

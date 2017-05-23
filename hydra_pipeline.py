@@ -21,13 +21,14 @@ def flat(direc, recipe=None):
     process.process_flat(direc, recipe, output_log=output).dispatch()
 
 def thar(direc, recipe=None, fast=False):
-    process.process_thar(direc, recipe, output=output, fast=fast)
+    process.process_thar(direc, recipe, output_log=output, fast=fast).dispatch()
+    #process.process_thar(direc, recipe, output=output, fast=fast)
 
 def sky(direc, recipe=None):
-    process.process_sky(direc, recipe, output=output)
+    process.process_sky(direc, recipe, output_log=output).dispatch()
 
 def target(direc, recipe=None):
-    process.process_target(direc, recipe, output=output)
+    process.process_target(direc, recipe, output_log=output).dispatch()
 
 def full_reduce(direc, recipe=None, fast=False):
     process.process_flat(direc, recipe, output=output)
