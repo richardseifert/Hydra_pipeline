@@ -154,7 +154,7 @@ def get_fiber_mask(some_fits, fiber_positions, use_fibers):
             fwidth = 0
         else:
             fcenter_list, fwidth = fit_fcenter_fwidth(some_fits, fiber_positions, xpos)
-        fwidth = 3
+        fwidth = 4
         for r in range(len(mask)):
             c = fcenter_list[r]
             mask[r][c] = fnum
