@@ -38,7 +38,7 @@ def fit_ngaussian(xdata, ydata, n, fast=False, plot=False):
     if fast:
         p = p0
     else:
-        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
+        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=0)
         p = m.params
 
     if plot:

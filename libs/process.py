@@ -5,6 +5,7 @@ plt.ion()
 from fitstools import combine, save_2darr, mask_fits, manage_dtype, assign_header
 from astropy.io import fits
 from find_fibers import find_fibers
+from fiber_profile import make_fiber_profile_map
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol
 from extract import optimal_extraction
@@ -20,6 +21,7 @@ class processor(object):
 	cp_fnames = {'master_bias':'master_bias.fits',
                      'master_flat':'master_flat.fits',
                      'fiber_mask':'fiber_mask.fits',
+                     'profile_map':'fiber_profile_map.fits',
                      'throughput_map':'throughput_map.fits',
                      'wavelength_solution':'wvlsol.fits',
                      'master_sky_spec':'master_sky_spec.fits'}
@@ -34,16 +36,16 @@ class processor(object):
 		self.output_log=output_log
 		self.init_dirs()
 	def init_dirs(self):
-		self.indata = 'indata/'+self.dname
-		if not os.path.exists(self.indata):
-			raise OSError("Indata folder "+self.indata+" not found.")
-		self.calib = 'calib/'+self.dname
-		ensure_path(self.calib+'/')
-		self.calib_dirs = {}
+                self.indata = 'indata/'+self.dname
+                if not os.path.exists(self.indata):
+                    raise OSError("Indata folder "+self.indata+" not found.")
+                self.calib = 'calib/'+self.dname
+                ensure_path(self.calib+'/')
+                self.calib_dirs = {}
                 self.outdata = 'outdata/'+self.dname
                 ensure_path(self.outdata+'/')
                 self.outdata_dirs = {}
-                for gnum in list({r.gnum for r in self.recipes}):
+                for gnum in list({r.gnum for r in self.recipes if r.rtype!='zero'}):
                     self.calib_dirs[gnum] = self.calib+'/group'+str(gnum)
                     ensure_path(self.calib_dirs[gnum])
                     self.outdata_dirs[gnum] = self.outdata+'/group'+str(gnum)
@@ -51,7 +53,7 @@ class processor(object):
 		
 	def load_calib_products(self, gnum):
 		for product in self.cp_fnames.keys():
-			#print 'ATTEMPTIN TO LOAD '+product
+			#print 'ATTEMPTING TO LOAD '+product
 			fpath = None
 			if os.path.exists(self.calib_dirs[gnum]+'/'+self.cp_fnames[product]):
 				fpath = self.calib_dirs[gnum]+'/'+self.cp_fnames[product]
@@ -80,19 +82,14 @@ class processor(object):
 		return [r for r in self.recipes if (gnum == None or gnum == r.gnum) and (rtype == None or rtype == r.rtype)]
 	def make_master_bias(self):
 		self.output('Generating master bias frame.')
-		bias_recipes = self.get_recipes(rtype='zero')
-		filenames = []
-		for r in bias_recipes:
-			info = r.split(',')
-			fnames = info[2].split(' ')
-			filenames.extend(fnames)
+		filenames = [fname for r in self.get_recipes(rtype='zero') for fname in r.filenames]
 		if len(filenames) > 0:
-			#Load files and create master bias
-			biases = [fits.open(self.indata+'/'+fname) for fname in filenames]
-			self.master_bias = combine(*biases, method='mean')
-			self.master_bias.writeto(self.calib+'/master_bias.fits', clobber=True)
-			for f in biases:
-				f.close()
+                    #Load files and create master bias
+                    biases = [fits.open(self.indata+'/'+fname) for fname in filenames]
+                    self.master_bias = combine(*biases, method='mean')
+                    self.master_bias.writeto(self.calib+'/master_bias.fits', clobber=True)
+                    for f in biases:
+                            f.close()
 	def get_master_bias(self):
 		try:
 			return self.master_bias
@@ -127,6 +124,14 @@ class process_flat(processor):
                 fm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['fiber_mask']
                 fits.writeto(fm_path, fiber_mask, clobber=True)
                 self.output('Fiber mask saved at '+fm_path)
+                
+                #Generate a fiber profile map
+                self.output('Generating fiber profile map.')
+                profile_map = make_fiber_profile_map(master_flat, fiber_mask)
+                print type(profile_map), 'OOGABOOGA'
+                fp_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['profile_map']
+                fits.writeto(fp_path, profile_map, clobber=True)
+                self.output('Fiber profile map saved at '+fp_path)
     		
                 #Calibrate master flat
                 self.output('Bias correcting master flat frame.')
@@ -155,13 +160,13 @@ class process_thar(processor):
                         comp = fits.open(self.indata+'/'+fname)
                         comp = calibrate(comp, master_bias, self.fiber_mask)
                         comp[0].data = comp[0].data / self.throughput_map
-                        wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, fast=self.fast)
+                        wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
                         wvlsol_maps.append(wvlsol_map)
                         ws_path = self.calib_dirs[r.gnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
                         fits.writeto(ws_path, wvlsol_map, clobber=True)
                         self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
                     master_wvlsol = np.mean(wvlsol_maps, axis=0)
-                    mws_path = self.calib_dirs[r.gnum]+'/wvlsol.fits'
+                    mws_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['wavelength_solution']
                     fits.writeto(mws_path, master_wvlsol, clobber=True)
                     self.output('Master Wavelength solution saved at '+mws_path)
 		
@@ -186,18 +191,18 @@ class process_sky(processor):
                 self.output('Bias correcting master sky frame.')
                 master_sky = calibrate(master_sky, master_bias, self.fiber_mask)
                 self.output('Throughput correcting master sky frame.')
-                #master_sky[0].data /= throughput_map
+                master_sky[0].data /= self.throughput_map
                 ms_path = self.calib_dirs[r.gnum]+'/master_sky.fits'
                 master_sky.writeto(ms_path, clobber=True)
                 self.output('Master sky frame saved at '+ms_path)
 
                 self.output('Extracting sky spectra.')
                 #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map)
-                sky_fibers = optimal_extraction(master_sky, self.fiber_mask, r.fibers, self.master_flat, self.wavelength_solution)
+                sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
                 self.output('Producing master sky spectrum')
-                #master_sky_spec = interp_median(*sky_specs)
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
-                mss_path = self.calib_dirs[r.gnum]+'/master_sky_spec.dat'
+                master_sky_spec.plot()
+                mss_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_sky_spec']
                 master_sky_spec.save(mss_path)
                 self.output('Master sky spectrum saved at '+mss_path)
 
@@ -221,14 +226,14 @@ class process_target(processor):
                 self.output('Bias correcting master target frame.')
                 master_tar = calibrate(master_tar, master_bias)
                 self.output('Throughput correcting master target frame.')
-                #master_tar[0].data /= throughput_map
+                master_tar[0].data /= self.throughput_map
                 mt_path = self.calib_dirs[r.gnum]+'/master_target_frame.fits'
                 master_tar.writeto(mt_path, clobber=True)
                 self.output('Master target frame saved at '+mt_path)
 
                 header = master_tar[0].header
                 self.output('Extracting target spectra.')
-                target_fibers = optimal_extraction(master_tar, self.fiber_mask, r.fibers, self.master_flat, self.wavelength_solution)
+                target_fibers = optimal_extraction(master_tar, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
                 ts_path = self.outdata_dirs[r.gnum]+'/target_spectra.fits'
                 target_fibers.save(ts_path)
                 self.output('Target spectrum saved as '+ts_path)
@@ -237,6 +242,7 @@ class process_target(processor):
                     self.output('Subtracting sky spectrum from target spectra.')
                     for i in range(len(target_fibers.get_spectra())):
                             spec = target_fibers[i] - self.master_sky_spec
+                            spec.plot(lw=1)
                             target_fibers[i] = spec
                     ts_path = self.outdata_dirs[r.gnum]+'/target_spectra_nosky.fits'
                     target_fibers.save(ts_path)
