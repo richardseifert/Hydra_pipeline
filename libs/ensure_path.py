@@ -18,7 +18,10 @@ def ensure_path(path):
     if not found:
         print "Path does not exist."
         return path
-    for dirname in dirs_to_make[:-1]:
-        os.makedirs(dirname)
+    for dirname in dirs_to_make:
+    	try:
+        	os.makedirs(dirname)
+        except OSError:
+        	pass #Directory already exists.
     return path
 
