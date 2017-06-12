@@ -8,11 +8,13 @@ from scipy.optimize import minimize
 import numpy as np
 from scipy.optimize import curve_fit
 from ngaussian import fit_ngaussian
-from extract import extract_counts
+from extract import extract_counts, optimal_extraction
 polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
 
-@manage_dtype(use_args=[0,1])
-def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
+@manage_dtype(use_args=[0,1], with_header=[0])
+def wvlsol(comp, fiber_mask, use_fibers, profile_map, **kwargs):
+    comp, comp_header = comp
+
     #Initialize a blank wavelength solution.
     wvlsol_map = np.zeros_like(fiber_mask)
 
@@ -32,7 +34,7 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     line_list_counts = dat[:,1]
     #If the table of thar peaks does not exist, make it.
     if not os.path.exists(master_calib+'/thar_peaks.dat'):
-        std, l_peak_x, l_peak_y = fit_ngaussian(line_list_wvl, line_list_counts, 40)
+        std, l_peak_x, l_peak_y = fit_ngaussian(line_list_wvl, line_list_counts, 70)
         f = open(master_calib+'/thar_peaks.dat', 'w')
         for x, y in zip(l_peak_x, l_peak_y):
             f.write(str(x).ljust(24)+str(y)+'\n')
@@ -74,7 +76,7 @@ def wvlsol(comp, fiber_mask, use_fibers, **kwargs):
     return wvlsol_map
 
 
-def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
+def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 33, **kwargs):
     #Find peaks in the fiber.
     std, npeaks_pix, npeaks_counts = fit_ngaussian(pix, counts, npeaks, **kwargs)
     typical_counts = np.median(npeaks_counts)
@@ -102,6 +104,7 @@ def fiber_wvlsol(pix, counts, linelist, starter_wvlsol, npeaks = 30, **kwargs):
         n += 1
 
     wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
+    print keep_coeffs, 'CUBIC FIT'
     return wsol
 
 def match_peaks(peaks_pix, peaks_wvl, template_wvlsol):
