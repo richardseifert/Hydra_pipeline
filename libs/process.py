@@ -7,7 +7,7 @@ from astropy.io import fits
 from find_fibers import find_fibers
 from fiber_profile import make_fiber_profile_map
 from throughput import make_throughput_map
-from find_wvlsol import wvlsol
+from find_wvlsol import wvlsol, wvlsolver
 from extract import optimal_extraction
 from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra
 from sys import stdout
@@ -158,9 +158,12 @@ class process_thar(processor):
                     for i,fname in enumerate(r.filenames):
                         self.output('Finding wavelength solution from '+fname)
                         comp = fits.open(self.indata+'/'+fname)
-                        comp = calibrate(comp, master_bias, self.fiber_mask)
+                        comp = calibrate(comp, master_bias, self.fiber_mask, lacosmic=False)
                         comp[0].data = comp[0].data / self.throughput_map
-                        wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
+                        #wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
+                        wvlsol_thing = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
+                        wvlsol_thing.solve()
+                        wvlsol_map = wvlsol_thing.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
                         ws_path = self.calib_dirs[r.gnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
                         fits.writeto(ws_path, wvlsol_map, clobber=True)

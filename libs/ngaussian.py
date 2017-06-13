@@ -4,7 +4,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 
-def fit_ngaussian(xdata, ydata, n, fast=False, plot=False):
+def fit_ngaussian(xdata, ydata, n, fast=False):
     '''
     A function that fits n gaussians to some data. Data can be fit quickly by
     only relying on a cubic spline to find peak centers or data can be fit more
@@ -41,6 +41,7 @@ def fit_ngaussian(xdata, ydata, n, fast=False, plot=False):
         m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=0)
         p = m.params
 
+    plot=False
     if plot:
         fig, ax = plt.subplots()
         ax.scatter(xdata, ydata)
