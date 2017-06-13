@@ -49,42 +49,35 @@ class wvlsolver:
         use_fibers_high = sorted([fnum for fnum in self.fnums if fnum >= 50])
         use_fibers_low = sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
 
-        print 'STARTING FIRST FIBER', use_fibers_high[0]
-        f_counts = extract_counts(self.comp, self.fmask, use_fibers_high[0])  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
-        f_pix = np.arange(len(f_counts), dtype=np.float64)
-        self.fibers[fnum] = fiber_wvlsolver(f_pix, f_counts, template, self.linelist, fast=self.fast)
-        template = self.fibers[fnum].solve()
-        print 'FINISHED FIRST FIBER'
-        for fnum in use_fibers_high[1:]:
+        def get_template(fnum):
+            nearest_fnums = sorted(self.fnums, key=lambda n: abs(fnum-n))
+            for n in nearest_fnums:
+                if n in self.fibers.keys():
+                    print 'FIBER', n, 'USED AS TEMPLATE'
+                    return self.fibers[n].get_solution()
+            print 'USING DEFAULT TEMPLATE'
+            return template
+
+        for fnum in use_fibers_high+use_fibers_low:
             f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
             f_pix = np.arange(len(f_counts), dtype=np.float64)
-            self.fibers[fnum] = fiber_wvlsolver(f_pix, f_counts, template, self.linelist, fast=self.fast)
-            template = self.fibers[fnum].solve()
-        template = self.fibers[use_fibers_high[0]]
-        for fnum in use_fibers_low:
-            f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
-            f_pix = np.arange(len(f_counts), dtype=np.float64)
-            self.fibers[fnum] = fiber_wvlsolver(f_pix, f_counts, template, self.linelist, fast=self.fast)
-            template = self.fibers[fnum].solve()
-        for fnum in self.fnums:
-            f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
-            f_pix = np.arange(len(f_counts), dtype=np.float64)
-            self.fibers[fnum] = fiber_wvlsolver(f_pix, f_counts, template, self.linelist, fast=self.fast)
-            template = self.fibers[fnum].solve()
+            self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast)
+            self.fibers[fnum].solve()
+
 
     def get_wvlsol_map(self):
         #Initialize a blank wavelength solution.
-        wvlsol_map = np.zeros_like(fiber_mask)
+        wvlsol_map = np.zeros_like(self.fmask)
         for fnum in self.fnums:
-            wsol = self.fibers[fnum]
+            wsol = self.fibers[fnum].get_solution()
 
             #Add individual wavelength solution to wvlsol_map
             wsol_arr = wsol(np.arange(len(wvlsol_map)))
-            ones_fiber = np.where(fiber_mask==fnum, np.ones_like(fiber_mask), 0)
+            ones_fiber = np.where(self.fmask==fnum, np.ones_like(self.fmask), 0)
             wvlsol_map += np.transpose(np.multiply(np.transpose(ones_fiber), wsol_arr))
 
         return wvlsol_map
-
+'''
 class fiber_wvlsolver:
     def __init__(self, pix, counts, template_solution, linelist, fast=False):
         self.pix = pix
@@ -95,7 +88,59 @@ class fiber_wvlsolver:
     def set_template_solution(self, new_template):
         self.template = new_template
     def solve(self):
-        return fiber_wvlsol(self.pix, self.counts, self.linelist, self.template, fast=self.fast)
+        wsol = wvlsol(self.pix, self.counts, self.linelist, self.template, fast=self.fast)
+        wsol.solve()
+        return wsol
+        #return fiber_wvlsol(self.pix, self.counts, self.linelist, self.template, fast=self.fast)
+'''
+class fiber_wvlsoler:
+    def __init__(self, pix, counts, template, linelist, fast=False):
+        self.pix = pix
+        self.counts = counts
+        self.linelist = linelist
+        self.template = template
+        self.fast = fast
+
+    def solve(self, npeaks=33):
+        #Find peaks in the fiber.
+        std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
+
+        #Sort fiber peaks by their height
+        typical_counts = np.median(self.pix_counts_all)
+        diffs = [abs(c - typical_counts) for c in self.pix_counts_all]
+        self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(diffs)]
+        print self.pix_peaks_all
+
+        #Solve
+        n = min([5, npeaks])
+        template_wvlsol = self.template
+        ignore_peaks_pix = []
+        while n <= npeaks:
+            use_peaks_pix = [self.pix_peaks_all[i] for i in range(n) if not i in ignore_peaks_pix]
+            peaks_pix, peaks_wvl = match_peaks(use_peaks_pix, self.linelist, template_wvlsol)
+            n_used = len(peaks_pix)
+            coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
+            wsol = lambda x, c=coeffs: polynomial(x, *c)
+            rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
+            if rsqrd/n_used > 0.01:
+                ignore_peaks_pix.append(n-1)
+            else:
+                template_wvlsol = wsol
+                keep_coeffs = coeffs
+                keep_peaks_pix = peaks_pix
+                keep_peaks_wvl = peaks_wvl
+                keep_rsqrd = rsqrd
+                keep_n_used = n_used
+            n += 1
+
+        self.wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
+    def get_solution(self):
+        try:
+            return self.wsol
+        except AttributeError:
+            self.solve()
+            return self.wsol
+
         
 @manage_dtype(use_args=[0,1], with_header=[0])
 def wvlsol(comp, fiber_mask, use_fibers, profile_map, **kwargs):
