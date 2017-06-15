@@ -9,6 +9,8 @@ import numpy as np
 from scipy.optimize import curve_fit
 from ngaussian import fit_ngaussian
 from extract import extract_counts, optimal_extraction
+import itertools
+
 polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
 
 class wvlsolver:
@@ -44,11 +46,6 @@ class wvlsolver:
         coeffs = fit_poly(p, w, 3)
         template = lambda x, c=coeffs: polynomial(x, *c)
 
-        #The template solution was generated using fiber 50, so when generating wvlsols, start
-        # at fiber 50 and go up, then start at fiber 49 and go down.
-        use_fibers_high = sorted([fnum for fnum in self.fnums if fnum >= 50])
-        use_fibers_low = sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
-
         def get_template(fnum):
             nearest_fnums = sorted(self.fnums, key=lambda n: abs(fnum-n))
             for n in nearest_fnums:
@@ -57,6 +54,11 @@ class wvlsolver:
                     return self.fibers[n].get_solution()
             print 'USING DEFAULT TEMPLATE'
             return template
+
+        #The template solution was generated using fiber 50, so when generating wvlsols, start
+        # at fiber 50 and go up, then start at fiber 49 and go down.
+        use_fibers_high = sorted([fnum for fnum in self.fnums if fnum >= 50])
+        use_fibers_low = sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
 
         for fnum in use_fibers_high+use_fibers_low:
             f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
@@ -77,44 +79,54 @@ class wvlsolver:
             wvlsol_map += np.transpose(np.multiply(np.transpose(ones_fiber), wsol_arr))
 
         return wvlsol_map
-'''
-class fiber_wvlsolver:
-    def __init__(self, pix, counts, template_solution, linelist, fast=False):
-        self.pix = pix
-        self.counts = counts
-        self.template = template_solution
-        self.linelist = linelist
-        self.fast = fast
-    def set_template_solution(self, new_template):
-        self.template = new_template
-    def solve(self):
-        wsol = wvlsol(self.pix, self.counts, self.linelist, self.template, fast=self.fast)
-        wsol.solve()
-        return wsol
-        #return fiber_wvlsol(self.pix, self.counts, self.linelist, self.template, fast=self.fast)
-'''
+
 class fiber_wvlsoler:
     def __init__(self, pix, counts, template, linelist, fast=False):
-        self.pix = pix
-        self.counts = counts
+        self.pix = np.array(pix)
+        self.counts = np.array(counts)
         self.linelist = linelist
         self.template = template
         self.fast = fast
 
-    def solve(self, npeaks=33):
+        #Load thar line list info.
+        master_calib = 'calib/master_calib'
+        dat = np.loadtxt(master_calib+'/thar_short.fits')
+        self.linelist_wvl = dat[:,0]
+        self.linelist_counts = dat[:,1]
+
+    def solve(self, npeaks=70):
         #Find peaks in the fiber.
         std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
 
         #Sort fiber peaks by their height
         typical_counts = np.median(self.pix_counts_all)
-        diffs = [abs(c - typical_counts) for c in self.pix_counts_all]
-        self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(diffs)]
-        print self.pix_peaks_all
+        heights = [-abs(c - typical_counts) for c in self.pix_counts_all]
+        self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(heights)]
 
-        #Solve
-        n = min([5, npeaks])
+        #Find a 5 good peaks for the initial wvlsol
         template_wvlsol = self.template
-        ignore_peaks_pix = []
+        for five_peaks_i in sorted(itertools.combinations(list(range(10)), 5), key=lambda s: sum([s_val**3 for s_val in s])):
+            use_peaks_pix = [self.pix_peaks_all[i] for i in five_peaks_i]
+            peaks_pix, peaks_wvl = match_peaks(use_peaks_pix, self.linelist, template_wvlsol)
+            if len(peaks_pix) < 5:
+                continue
+            coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
+            wsol = lambda x, c=coeffs: polynomial(x, *c)
+            rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
+            print five_peaks_i, 'rsqrd =',rsqrd
+
+            #self.plot_solution(peaks_pix=peaks_pix, peaks_wvl=peaks_wvl, wsol=wsol, title=str(five_peaks_i)+' '+str(len(peaks_pix))+' peaks, '+str(rsqrd))
+
+            if rsqrd/len(peaks_pix) <= 0.01:
+                break
+        n = max(five_peaks_i)+1
+        ignore_peaks_pix = [i for i in range(max(five_peaks_i)) if not i in five_peaks_i]
+        print ignore_peaks_pix, 'IGNORE THESE FROM THE GET GO!'
+
+
+        self.peaks_pix = []
+
+        print 'n =',n
         while n <= npeaks:
             use_peaks_pix = [self.pix_peaks_all[i] for i in range(n) if not i in ignore_peaks_pix]
             peaks_pix, peaks_wvl = match_peaks(use_peaks_pix, self.linelist, template_wvlsol)
@@ -122,18 +134,47 @@ class fiber_wvlsoler:
             coeffs = fit_poly(peaks_pix, peaks_wvl, n=3)
             wsol = lambda x, c=coeffs: polynomial(x, *c)
             rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
-            if rsqrd/n_used > 0.01:
+            if len(peaks_pix) < len(self.peaks_pix) or rsqrd/n_used > 0.01:
                 ignore_peaks_pix.append(n-1)
+                print len(peaks_pix), rsqrd/n_used, 'REJECTED'
             else:
+                self.wsol = wsol
                 template_wvlsol = wsol
-                keep_coeffs = coeffs
-                keep_peaks_pix = peaks_pix
-                keep_peaks_wvl = peaks_wvl
-                keep_rsqrd = rsqrd
-                keep_n_used = n_used
+                self.wsol_coeffs = coeffs
+                self.peaks_pix = peaks_pix
+                self.peaks_wvl = peaks_wvl
+                self.rsqrd = rsqrd
+                print len(peaks_pix), rsqrd/n_used, 'ACCEPTED'
             n += 1
 
-        self.wsol = lambda x, c=keep_coeffs: polynomial(x, *c)
+        print 'FINAL USING '+str(len(self.peaks_pix))+' PEAKS'
+        self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd))
+        self.wsol = lambda x, c=self.wsol_coeffs: polynomial(x, *c)
+
+    def plot_solution(self, peaks_pix=None, peaks_wvl=None, wsol=None, **kwargs):
+        if type(peaks_pix)==type(None):
+            peaks_pix = self.peaks_pix
+        if type(peaks_wvl)==type(None):
+            peaks_wvl = self.peaks_wvl
+        if wsol==None:
+            wsol=self.wsol
+        fig, ax = plt.subplots()
+        if 'title' in kwargs:
+            ax.set_title(kwargs['title'])
+        ax.scatter(peaks_pix, peaks_wvl, color='blue')
+        p = np.linspace(min(peaks_pix), max(peaks_pix), 1000)
+        w = wsol(p)
+        ax.plot(p, w, color='red')
+
+        wvl = wsol(self.pix)
+        fig, ax = plt.subplots()
+        if 'title' in kwargs:
+            ax.set_title(kwargs['title'])
+        ax.plot(self.linelist_wvl, self.linelist_counts, color='red')
+        ax.plot(wvl, self.counts*max(self.linelist_counts)/max(self.counts), color='blue')
+        ax.scatter(peaks_wvl, [self.counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
+
+
     def get_solution(self):
         try:
             return self.wsol
@@ -344,7 +385,7 @@ def fit_poly(x, y, n):
            of x^0.
     '''
     use_n = min([n+1, len(x)])-1
-    print n, len(x), use_n
+    #print n, len(x), use_n
     if use_n == 0:
         return [0]*n
     
