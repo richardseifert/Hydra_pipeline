@@ -64,7 +64,6 @@ def extract_counts(img, fiber_mask, fiber_num):
     fiber_num: The integer ID of the fiber to be extracted. This should be an
                existing fiber in the fiber_mask.
     '''
-    print fiber_num, 'fibernumber!!!'
     fiber = mask_fits(img, fiber_mask, fiber_num, reshape=True)
     #display(img)
     counts = row_avg(fiber)

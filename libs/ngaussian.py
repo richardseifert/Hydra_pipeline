@@ -2,7 +2,7 @@ import numpy as np
 from mpfit import mpfit
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
-
+from scipy.optimize import curve_fit
 
 def fit_ngaussian(xdata, ydata, n, fast=False):
     '''
@@ -35,13 +35,17 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
         p0.append(y)
         p0.append(x)
 
+    f = lambda x, sig: make_ngaussian(x, [sig]+p0[1:])
+    coeff, err = curve_fit(f, xdata, ydata, p0=[p0[0]])
+    p0[0] = coeff[0]
+
     if fast:
         p = p0
     else:
-        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=0)
+        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
         p = m.params
 
-    plot=False
+    plot=True
     if plot:
         fig, ax = plt.subplots()
         ax.scatter(xdata, ydata)

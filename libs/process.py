@@ -35,6 +35,7 @@ class processor(object):
 			raise OSError("Recipe file not found: "+recipes)
 		self.output_log=output_log
 		self.init_dirs()
+                self.output_log.set_log_path(self.outdata+'/output.log')
 	def init_dirs(self):
                 self.indata = 'indata/'+self.dname
                 if not os.path.exists(self.indata):
@@ -74,10 +75,10 @@ class processor(object):
 
 	def output(self, message=None, progress=None):
 		if self.output_log != None:
-			if message!=None:
-				self.output_log.edit_message(message)
-			if progress!=None:
-				self.output_log.edit_progress(progress)
+                    if message!=None:
+                            self.output_log.edit_message(message)
+                    if progress!=None:
+                            self.output_log.edit_progress(progress)
 	def get_recipes(self, gnum=None, rtype=None):
 		return [r for r in self.recipes if (gnum == None or gnum == r.gnum) and (rtype == None or rtype == r.rtype)]
 	def make_master_bias(self):
@@ -118,14 +119,14 @@ class process_flat(processor):
                 mf_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_flat']
                 master_flat.writeto(mf_path, clobber=True)
     		
-                #Find fibers, make fiber mask, save to directory
+                #Find fibers, make fiber mask, save to calib directory
                 self.output('Locating fibers.')
                 fiber_mask = find_fibers(master_flat, r.fibers)
                 fm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['fiber_mask']
                 fits.writeto(fm_path, fiber_mask, clobber=True)
                 self.output('Fiber mask saved at '+fm_path)
                 
-                #Generate a fiber profile map
+                #Generate a fiber profile map, save to calib directory
                 self.output('Generating fiber profile map.')
                 profile_map = make_fiber_profile_map(master_flat, fiber_mask)
                 print type(profile_map), 'OOGABOOGA'
@@ -137,7 +138,7 @@ class process_flat(processor):
                 self.output('Bias correcting master flat frame.')
                 master_flat = calibrate(master_flat, master_bias, fiber_mask, lacosmic=False)
     		
-                #Generate a fiber thoughput map.
+                #Generate a fiber thoughput map, save to calib directory
                 self.output('Generating throughput map.')
                 throughput_map = make_throughput_map(fiber_mask, master_flat)
                 tm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['throughput_map']
@@ -161,7 +162,7 @@ class process_thar(processor):
                         comp = calibrate(comp, master_bias, self.fiber_mask, lacosmic=False)
                         comp[0].data = comp[0].data / self.throughput_map
                         #wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
-                        wvlsol_thing = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
+                        wvlsol_thing = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log)
                         wvlsol_thing.solve()
                         wvlsol_map = wvlsol_thing.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
@@ -200,9 +201,11 @@ class process_sky(processor):
                 self.output('Master sky frame saved at '+ms_path)
 
                 self.output('Extracting sky spectra.')
-                #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map)
                 sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
                 self.output('Producing master sky spectrum')
+                ss_path = self.calib_dirs[r.gnum]+'/sky_spectra.fits'
+                sky_fibers.save(ss_path)
+                output.edit_message('Sky spectra saved at '+ss_path)
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
                 master_sky_spec.plot()
                 mss_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_sky_spec']
@@ -492,6 +495,9 @@ def sky_dorecipe(r, dname, output=None):
     sky_fibers = optimal_extraction(master_sky, fiber_mask, use_fibers, master_flat, wvlsol_map)
     output.edit_message('Producing master sky spectrum')
     #master_sky_spec = interp_median(*sky_specs)
+    ss_path = outdata_dir+'/sky_spectra.fits'
+    sky_fibers.save(ss_path)
+    output.edit_message('Sky spectra saved at '+ss_path)
     master_sky_spec = median_spectra(sky_fibers.get_spectra())
     if False:
         fig, ax = plt.subplots()

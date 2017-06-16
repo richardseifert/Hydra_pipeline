@@ -1,4 +1,6 @@
 from sys import stdout
+import time
+
 class output_log:
     def __init__(self, writer=stdout, log_path=None):
         self.log_path = log_path
@@ -8,7 +10,7 @@ class output_log:
         self.progress_str = ""
         self.message_str = ""
         self.coverlen = 0
-    def set_log_path(log_path):
+    def set_log_path(self, log_path):
         self.log_path = log_path
     def update(self):
         strg = self.progress_str+' '+self.message_str
@@ -26,5 +28,5 @@ class output_log:
             dt_str = time.strftime("%Y-%m-%dT%H:%M:%S")
             f = open(self.log_path, 'a')
             f.write('['+dt_str+'] '+self.message_str+'\n')
-    def linebreak():
+    def linebreak(self):
         self.writer.write('\n')
