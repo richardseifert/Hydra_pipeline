@@ -68,6 +68,8 @@ class wvlsolver:
             f_pix = np.arange(len(f_counts), dtype=np.float64)
             self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast)
             self.fibers[fnum].solve()
+            if self.output != None:
+                self.output.edit_message('fiber '+str(fnum)+' wavelength solution found using '+str(len(self.fibers[fnum].peaks_pix))+' ThAr lines.')
 
 
     def get_wvlsol_map(self):
@@ -97,7 +99,7 @@ class fiber_wvlsoler:
         self.linelist_wvl = dat[:,0]
         self.linelist_counts = dat[:,1]
 
-    def solve(self, npeaks=50):
+    def solve(self, npeaks=70):
         #Find peaks in the fiber.
         std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
 
@@ -105,6 +107,7 @@ class fiber_wvlsoler:
         typical_counts = np.median(self.pix_counts_all)
         heights = [-abs(c - typical_counts) for c in self.pix_counts_all]
         self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(heights)]
+        print [p for p in self.pix_peaks_all if p > len(self.pix)]
 
         #Find 5 good peaks for the initial wvlsol
         template_wvlsol = self.template
@@ -152,14 +155,16 @@ class fiber_wvlsoler:
             n += 1
 
         #print 'FINAL USING '+str(len(self.peaks_pix))+' PEAKS'
-        self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd))
+        #self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd))
         self.wsol = lambda x, c=self.wsol_coeffs: polynomial(x, *c)
 
-    def plot_solution(self, peaks_pix=None, peaks_wvl=None, wsol=None, **kwargs):
+    def plot_solution(self, peaks_pix=None, peaks_wvl=None, counts=None, wsol=None, **kwargs):
         if type(peaks_pix)==type(None):
             peaks_pix = self.peaks_pix
         if type(peaks_wvl)==type(None):
             peaks_wvl = self.peaks_wvl
+        if type(counts)==type(None):
+            counts = self.counts
         if wsol==None:
             wsol=self.wsol
         fig, ax = plt.subplots()
@@ -176,7 +181,7 @@ class fiber_wvlsoler:
             ax.set_title(kwargs['title'])
         ax.plot(self.linelist_wvl, self.linelist_counts, color='red')
         ax.plot(wvl, self.counts*max(self.linelist_counts)/max(self.counts), color='blue')
-        ax.scatter(peaks_wvl, [self.counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
+        ax.scatter(peaks_wvl, [counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
 
 
     def get_solution(self):

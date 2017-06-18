@@ -9,7 +9,6 @@ def make_fiber_profile_map(img, fmask):
     fiber_profile_map = np.zeros_like(img)
     fnums = list({n for row in fmask for n in row if n != 0})
     for fnum in fnums:
-        print fnum
         fiber = mask_fits(img, fmask, maskval=fnum)
         n = 0
         for i,spectral_slice in enumerate(fiber):

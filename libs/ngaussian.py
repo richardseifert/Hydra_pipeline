@@ -23,6 +23,10 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
 
     plot: Boolean of whether or not to plot things.
     '''
+    good = (np.logical_not(np.isnan(ydata))) & (np.logical_not(np.isinf(ydata)))
+    xdata = xdata[good]
+    ydata = ydata[good]
+
     peak_x, peak_y = find_n_peaks(xdata, ydata, n)
     for i in range(len(peak_x)):
         peak_i = np.where(xdata==peak_x[i])[0][0]
@@ -37,13 +41,63 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
 
     f = lambda x, sig: make_ngaussian(x, [sig]+p0[1:])
     coeff, err = curve_fit(f, xdata, ydata, p0=[p0[0]])
+    sig = coeff[0]
     p0[0] = coeff[0]
 
     if fast:
         p = p0
     else:
-        m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
-        p = m.params
+        #sorted_peak_x = np.argsort(peak_x)
+        p = [sig]
+        i = 0
+        #k = 0
+        w = 15
+        xlow = max(peak_x)
+        xhigh = min(peak_x)
+        p0_chunk = [sig]
+        while i < len(peak_x):
+            #print 'peak', i
+            amp = p0[(i*2)+1]
+            mu = p0[(i*2+1)+1]
+            #print 'mu =',mu
+            if len(p0_chunk) == 1 or mu >= xlow and mu <= xhigh:
+                #print 'ADDING'
+                p0_chunk.append(amp)
+                p0_chunk.append(mu)
+                xlow = min([xlow, mu-w*sig])
+                xhigh = max([xhigh, mu+w*sig])
+                #print 'xlow =',xlow,'xhigh =',xhigh
+                #k += 1
+                i += 1
+            else:
+                #print 'mpfitting '+str(k)+' peaks.'
+                in_range = (xdata >= xlow) & (xdata <= xhigh)
+                mu_par = {'LIMITED':[1,1],'LIMITS':[xlow,xhigh]}
+                amp_par = {'LIMITED':[1,0],'LIMITS':[0.0,0]}
+                parinfo = [{}]+[amp_par,mu_par]*((len(p0_chunk)-1)/2)
+                #print parinfo
+                m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=0)
+                print 'FINAL', m.params
+                p.extend(m.params[1:])
+                #k = 0
+                xlow = max(peak_x)
+                xhigh = min(peak_x)
+                p0_chunk = [sig]
+
+        in_range = (xdata >= xlow) & (xdata <= xhigh)
+        mu_par = {'limited':[1,1],'limits':[xlow,xhigh]}
+        amp_par = {'limited':[1,0],'limits':[0.0,0]}
+        parinfo = [{'limited':[1,0],'limits':[0.0,0]}]+[amp_par,mu_par]*((len(p0_chunk)-1)/2)
+        #print parinfo
+        m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=0)
+        print 'FINAL', m.params
+        p.extend(m.params[1:])
+                
+            
+            #xlow = min([xlow, mu-sig])
+            #xhigh = max([xhigh, mu+sig])
+        #m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
+        #p = m.params
 
     plot=True
     if plot:
@@ -79,11 +133,17 @@ def find_n_peaks(xdata, ydata, num_peaks):
     peak_i_list = [i for i in range(1,len(ydata)-1) if ydata[i] > ydata[i-1] and ydata[i] > ydata[i+1]]
     peak_xvals = np.asarray([xdata[i] for i in peak_i_list])
     peak_yvals = np.asarray([ydata[i] for i in peak_i_list])
+    
+    #Sort by peak height to select the tallest num_peaks peaks
     sort_i = np.argsort(-peak_yvals)
+    peak_xvals = peak_xvals[sort_i][:num_peaks]
+    peak_yvals = peak_yvals[sort_i][:num_peaks]
+    
+    #Sort by peak position
+    sort_i = np.argsort(peak_xvals)
     peak_xvals = peak_xvals[sort_i]
     peak_yvals = peak_yvals[sort_i]
-
-    return peak_xvals[:num_peaks], peak_yvals[:num_peaks]
+    return peak_xvals, peak_yvals
 
 def get_peak_center(xlist, ylist, i, prec=0.001):
     '''

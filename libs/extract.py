@@ -110,7 +110,6 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
     if type(use_fibers)==type(None):
         use_fibers = list({n for row in fiber_mask for n in row if n != 0})
     #Get image header and data
-    print image
     header = image[1]
     image = image[0]
 
@@ -137,8 +136,6 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
 
     res = fibers()
     for fnum in use_fibers: 
-        print fnum
-
         D = mask_fits(image, fiber_mask, maskval=fnum, reshape=True)
 
         P = mask_fits(profile_map, fiber_mask, maskval=fnum, reshape=True)

@@ -112,6 +112,8 @@ class process_flat(processor):
             master_bias = self.get_master_bias()
             for i,r in enumerate(self.get_recipes(rtype='flat')):
                 self.output(message='Generating master flat frame.', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+
+                #Generate master flat frame, save to calib directory
                 flats = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
                 master_flat = combine(*flats)
                 for flat in flats:
@@ -129,7 +131,6 @@ class process_flat(processor):
                 #Generate a fiber profile map, save to calib directory
                 self.output('Generating fiber profile map.')
                 profile_map = make_fiber_profile_map(master_flat, fiber_mask)
-                print type(profile_map), 'OOGABOOGA'
                 fp_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['profile_map']
                 fits.writeto(fp_path, profile_map, clobber=True)
                 self.output('Fiber profile map saved at '+fp_path)
@@ -153,8 +154,12 @@ class process_thar(processor):
         def dispatch(self):
                 master_bias = self.get_master_bias()
                 for n,r in enumerate(self.get_recipes(rtype='comp')):
-                    self.load_calib_products(r.gnum)
                     self.output(message='', progress='Processing '+self.dname+' flats: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+
+                    #Load previously generated calibration products
+                    self.load_calib_products(r.gnum)
+
+                    #Generate wavelength solutions for each comp frame, save to calib directory
                     wvlsol_maps = []
                     for i,fname in enumerate(r.filenames):
                         self.output('Finding wavelength solution from '+fname)
@@ -162,13 +167,16 @@ class process_thar(processor):
                         comp = calibrate(comp, master_bias, self.fiber_mask, lacosmic=False)
                         comp[0].data = comp[0].data / self.throughput_map
                         #wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
-                        wvlsol_thing = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log)
-                        wvlsol_thing.solve()
-                        wvlsol_map = wvlsol_thing.get_wvlsol_map()
+                        w = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log)
+                        w.solve()
+                        wvlsol_map = w.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
                         ws_path = self.calib_dirs[r.gnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
                         fits.writeto(ws_path, wvlsol_map, clobber=True)
                         self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
+
+                    #Generate master wavelength solution as average of the individual wavelength solutions,
+                    # save to calib directory
                     master_wvlsol = np.mean(wvlsol_maps, axis=0)
                     mws_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['wavelength_solution']
                     fits.writeto(mws_path, master_wvlsol, clobber=True)
@@ -181,15 +189,21 @@ class process_sky(processor):
         def dispatch(self):
             master_bias = self.get_master_bias()
             for i,r in enumerate(self.get_recipes(rtype='sky')):
-                self.load_calib_products(r.gnum)
                 self.output(message='', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
 
-                #Make master sky frame
+                #Check that there are actually sky fibers in need of reducing
+                if len(r.filenames) == 0:
+                    self.output('No sky fibers to reduce. Moving on.')
+                    continue
+
+                #Load previously generated calibration products
+                self.load_calib_products(r.gnum)
+
+                #Make master sky frame, save to calib directory
                 self.output('Loading sky frames.')
                 skys = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
                 self.output('Median combining sky frames.')
                 master_sky = combine(*skys)
-                master_sky.writeto('plots/lacosmic/master_sky.fits', clobber=True)
                 for sky in skys:
                     sky.close()
                 self.output('Bias correcting master sky frame.')
@@ -200,12 +214,15 @@ class process_sky(processor):
                 master_sky.writeto(ms_path, clobber=True)
                 self.output('Master sky frame saved at '+ms_path)
 
+                #Extract sky spectra, save to calib directory
                 self.output('Extracting sky spectra.')
                 sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
-                self.output('Producing master sky spectrum')
                 ss_path = self.calib_dirs[r.gnum]+'/sky_spectra.fits'
                 sky_fibers.save(ss_path)
-                output.edit_message('Sky spectra saved at '+ss_path)
+                self.output('Sky spectra saved at '+ss_path)
+
+                #Make master sky spectrum, save to calib directory
+                self.output('Producing master sky spectrum')
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
                 master_sky_spec.plot()
                 mss_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_sky_spec']
@@ -219,10 +236,17 @@ class process_target(processor):
         def dispatch(self):
             master_bias = self.get_master_bias()
             for i,r in enumerate(self.get_recipes(rtype='object')):
-                self.load_calib_products(r.gnum)
                 self.output(message='', progress='Processing '+self.dname+' targets: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='object')))+' |')
 
-                #Make master target frame
+                #Check that there are actually target fibers in need of reducing
+                if len(r.filenames) == 0:
+                    self.output('No target fibers to reduce. Moving on.')
+                    continue
+
+                #Load previously generated calibration products
+                self.load_calib_products(r.gnum)
+
+                #Make master target frame, save to calib directory
                 self.output('Loading target frames.')
                 tars = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
                 self.output('Median combining target frames.')
@@ -237,14 +261,16 @@ class process_target(processor):
                 master_tar.writeto(mt_path, clobber=True)
                 self.output('Master target frame saved at '+mt_path)
 
-                header = master_tar[0].header
+                #Extract target spectra, save to outdata directory
                 self.output('Extracting target spectra.')
                 target_fibers = optimal_extraction(master_tar, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
                 ts_path = self.outdata_dirs[r.gnum]+'/target_spectra.fits'
                 target_fibers.save(ts_path)
                 self.output('Target spectrum saved as '+ts_path)
+
+                #If master sky spectrum exists, subtract sky from target spectra
+                #Save to outdata directory
                 try:
-                    #Subtract master sky spectrum.
                     self.output('Subtracting sky spectrum from target spectra.')
                     for i in range(len(target_fibers.get_spectra())):
                             spec = target_fibers[i] - self.master_sky_spec

@@ -949,6 +949,7 @@ class mpfit:
 		limited = self.parinfo(parinfo, 'limited', default=[0,0], n=npar)
 		limits = self.parinfo(parinfo, 'limits', default=[0.,0.], n=npar)
 		if (limited is not None) and (limits is not None):
+                        print "FINE, I'LL USE LIMITED AND LIMITS. LOVE, MPFIT"
 			# Error checking on limits in parinfo
 			if numpy.any((limited[:,0] & (xall < limits[:,0])) |
 								 (limited[:,1] & (xall > limits[:,1]))):

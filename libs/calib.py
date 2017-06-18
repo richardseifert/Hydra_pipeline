@@ -90,20 +90,16 @@ def remove_cosmics(image, gain=None, readnoise=None, sigclip=5.0, sigfrac=0.5, o
 	if readnoise==None:
 		raise KeyError('Cannot determine image readnoise from information given.')
 
-	c = cosmics.cosmicsimage(image, gain=gain, readnoise=readnoise,
-						     sigclip=sigclip, sigfrac=sigfrac, objlim=objlim)
+	c = cosmics.cosmicsimage(image, gain=gain, readnoise=readnoise, sigclip=sigclip, sigfrac=sigfrac, objlim=objlim, verbose=False)
 	c.run(maxiter=5)
 	cosmics_mask = c.mask
-	cosmics.tofits('plots/lacosmic/'+fname_noext+'_cmask.fits', np.transpose(cosmics_mask), header)
-	cosmics.tofits('plots/lacosmic/'+fname_noext+'_before.fits', np.transpose(image), header)
+	#cosmics.tofits('plots/lacosmic/'+fname_noext+'_cmask.fits', np.transpose(cosmics_mask), header)
+	#cosmics.tofits('plots/lacosmic/'+fname_noext+'_before.fits', np.transpose(image), header)
 	cosmics_masked_image = mask_fits(image, cosmics_mask, maskval=0.0, fillval=np.nan)
-	cosmics.tofits('plots/lacosmic/'+fname_noext+'_after.fits', np.transpose(cosmics_masked_image), header)
+	#cosmics.tofits('plots/lacosmic/'+fname_noext+'_after.fits', np.transpose(cosmics_masked_image), header)
 	
 	if type(cosmics_masked_image) == fits.hdu.hdulist.HDUList:
 		cosmics_masked_image = assign_header(cosmics_masked_image, image[0].header)
 		cosmics_masked_image[0].header['COMMENT'] = 'Cosmic rays masked.'
 
 	return cosmics_masked_image,header
-	
-	
-								 

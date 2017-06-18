@@ -209,7 +209,6 @@ def find_fibers(some_fits, use_fibers):
     n = None
     if header != None:
         n = getFiberNum(header)
-    fitstools.display(data)
     col_avgs = fitstools.col_avg(data)
     if False:
         fig, ax = plt.subplots()
