@@ -14,6 +14,8 @@ def make_throughput_map(fmask, mflat):
     #Correct for the profile of each flat fiber
     for fnum in fnums:
         flat_spec = row_avg(mask_fits(mflat, fmask, maskval=fnum))
+        if np.nanmin(flat_spec) < 0:
+            print 'WARNING: Likely weak or broken fiber! Flat fiber contains negative values.'
         medianf = np.nanmedian(flat_spec)
         for i,counts in enumerate(flat_spec):
             throughput_map[i][np.where(fmask[i]==fnum)] *= flat_spec[i]/medianf

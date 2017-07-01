@@ -76,30 +76,47 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
                 amp_par = {'LIMITED':[1,0],'LIMITS':[0.0,0]}
                 parinfo = [{}]+[amp_par,mu_par]*((len(p0_chunk)-1)/2)
                 #print parinfo
-                m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=0)
-                print 'FINAL', m.params
-                p.extend(m.params[1:])
-                #k = 0
+                keep_going = True
+                while keep_going:
+                    keep_going = False
+                    m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=1)
+                    params = []
+                    for j in [indx for indx in range(len(m.params)) if indx%2==0 and indx!=0][::-1]:
+                        if m.params[j] >= xlow and m.params[j] <= xhigh and m.params[j-1] >= 0:
+                            params.extend(m.params[j-1:j+1])
+                        else:
+                            del p0_chunk[j]
+                            del parinfo[j]
+                            del p0_chunk[j-1]
+                            del parinfo[j-1]
+                            keep_going = True
+                p.extend(params)
                 xlow = max(peak_x)
                 xhigh = min(peak_x)
                 p0_chunk = [sig]
+
 
         in_range = (xdata >= xlow) & (xdata <= xhigh)
         mu_par = {'limited':[1,1],'limits':[xlow,xhigh]}
         amp_par = {'limited':[1,0],'limits':[0.0,0]}
         parinfo = [{'limited':[1,0],'limits':[0.0,0]}]+[amp_par,mu_par]*((len(p0_chunk)-1)/2)
-        #print parinfo
-        m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=0)
-        print 'FINAL', m.params
-        p.extend(m.params[1:])
-                
-            
-            #xlow = min([xlow, mu-sig])
-            #xhigh = max([xhigh, mu+sig])
-        #m = mpfit(ngaussian_funct, p0, {'xdata':xdata, 'ydata':ydata}, quiet=1)
-        #p = m.params
+        keep_going = True
+        while keep_going:
+            keep_going = False
+            m = mpfit(ngaussian_funct, p0_chunk, {'xdata':xdata[in_range], 'ydata':ydata[in_range]}, parinfo=parinfo, quiet=1)
+            params = []
+            for j in [indx for indx in range(len(m.params)) if indx%2==0 and indx!=0][::-1]:
+                if m.params[j] >= xlow and m.params[j] <= xhigh and m.params[j-1] >= 0:
+                    params.extend(m.params[j-1:j+1])
+                else:
+                    del p0_chunk[j]
+                    del parinfo[j]
+                    del p0_chunk[j-1]
+                    del parinfo[j-1]
+                    keep_going = True
+        p.extend(params)
 
-    plot=True
+    plot=False
     if plot:
         fig, ax = plt.subplots()
         ax.scatter(xdata, ydata)

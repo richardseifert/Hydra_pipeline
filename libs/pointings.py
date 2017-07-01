@@ -2,7 +2,7 @@ import glob
 from datetime import datetime
 from astropy.io import fits
 
-class obs_group:
+class pointing:
     def __init__(self, obj=[], flat=[], comp=[]):
         self.images = {'object' :list(obj), 'flat':list(flat), 'comp':list(comp)}
     def add_image(self, im, imgtype):
@@ -29,7 +29,7 @@ def convert_timestr(s):
     return datetime.strptime(s, '%Y-%m-%dT%H:%M:%S:%f')
 
 #group images with identical fiber pointings that were taken chronologically
-def group_obs(direc):
+def get_pointings(direc):
     #Get list of fits files in direc
     if direc[-1] != '/':
         direc += '/'
@@ -52,7 +52,7 @@ def group_obs(direc):
             fiberConfig += h['SLFIB'+str(n)]
             n += 1
         if fiberConfig != prev_fiberConfig:
-            pointings.append(obs_group())
+            pointings.append(pointing())
         if h['IMGTYPE'] == 'zero':
             biases.append(f)
         else:

@@ -46,18 +46,18 @@ class processor(object):
                 self.outdata = 'outdata/'+self.dname
                 ensure_path(self.outdata+'/')
                 self.outdata_dirs = {}
-                for gnum in list({r.gnum for r in self.recipes if r.rtype!='zero'}):
-                    self.calib_dirs[gnum] = self.calib+'/group'+str(gnum)
-                    ensure_path(self.calib_dirs[gnum])
-                    self.outdata_dirs[gnum] = self.outdata+'/group'+str(gnum)
-                    ensure_path(self.outdata_dirs[gnum])
+                for pnum in list({r.pnum for r in self.recipes if r.rtype!='zero'}):
+                    self.calib_dirs[pnum] = self.calib+'/P'+str(pnum)
+                    ensure_path(self.calib_dirs[pnum])
+                    self.outdata_dirs[pnum] = self.outdata+'/P'+str(pnum)
+                    ensure_path(self.outdata_dirs[pnum])
 		
-	def load_calib_products(self, gnum):
+	def load_calib_products(self, pnum):
 		for product in self.cp_fnames.keys():
 			#print 'ATTEMPTING TO LOAD '+product
 			fpath = None
-			if os.path.exists(self.calib_dirs[gnum]+'/'+self.cp_fnames[product]):
-				fpath = self.calib_dirs[gnum]+'/'+self.cp_fnames[product]
+			if os.path.exists(self.calib_dirs[pnum]+'/'+self.cp_fnames[product]):
+				fpath = self.calib_dirs[pnum]+'/'+self.cp_fnames[product]
 				#print 'FOUND '+product+' IN GROUP CALIB DIRECTORY'
 			elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
 				fpath = self.calib+'/'+self.cp_fnames[product]
@@ -79,8 +79,8 @@ class processor(object):
                             self.output_log.edit_message(message)
                     if progress!=None:
                             self.output_log.edit_progress(progress)
-	def get_recipes(self, gnum=None, rtype=None):
-		return [r for r in self.recipes if (gnum == None or gnum == r.gnum) and (rtype == None or rtype == r.rtype)]
+	def get_recipes(self, pnum=None, rtype=None):
+		return [r for r in self.recipes if (pnum == None or pnum == r.pnum) and (rtype == None or rtype == r.rtype)]
 	def make_master_bias(self):
 		self.output('Generating master bias frame.')
 		filenames = [fname for r in self.get_recipes(rtype='zero') for fname in r.filenames]
@@ -118,20 +118,20 @@ class process_flat(processor):
                 master_flat = combine(*flats)
                 for flat in flats:
                     flat.close()
-                mf_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_flat']
+                mf_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['master_flat']
                 master_flat.writeto(mf_path, clobber=True)
     		
                 #Find fibers, make fiber mask, save to calib directory
                 self.output('Locating fibers.')
                 fiber_mask = find_fibers(master_flat, r.fibers)
-                fm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['fiber_mask']
+                fm_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['fiber_mask']
                 fits.writeto(fm_path, fiber_mask, clobber=True)
                 self.output('Fiber mask saved at '+fm_path)
                 
                 #Generate a fiber profile map, save to calib directory
                 self.output('Generating fiber profile map.')
                 profile_map = make_fiber_profile_map(master_flat, fiber_mask)
-                fp_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['profile_map']
+                fp_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['profile_map']
                 fits.writeto(fp_path, profile_map, clobber=True)
                 self.output('Fiber profile map saved at '+fp_path)
     		
@@ -142,7 +142,7 @@ class process_flat(processor):
                 #Generate a fiber thoughput map, save to calib directory
                 self.output('Generating throughput map.')
                 throughput_map = make_throughput_map(fiber_mask, master_flat)
-                tm_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['throughput_map']
+                tm_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['throughput_map']
                 fits.writeto(tm_path, throughput_map, clobber=True)
                 self.output('Throughput map saved at '+tm_path)
 
@@ -157,7 +157,7 @@ class process_thar(processor):
                     self.output(message='', progress='Processing '+self.dname+' flats: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
 
                     #Load previously generated calibration products
-                    self.load_calib_products(r.gnum)
+                    self.load_calib_products(r.pnum)
 
                     #Generate wavelength solutions for each comp frame, save to calib directory
                     wvlsol_maps = []
@@ -171,14 +171,14 @@ class process_thar(processor):
                         w.solve()
                         wvlsol_map = w.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
-                        ws_path = self.calib_dirs[r.gnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
+                        ws_path = self.calib_dirs[r.pnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
                         fits.writeto(ws_path, wvlsol_map, clobber=True)
                         self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
 
                     #Generate master wavelength solution as average of the individual wavelength solutions,
                     # save to calib directory
                     master_wvlsol = np.mean(wvlsol_maps, axis=0)
-                    mws_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['wavelength_solution']
+                    mws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution']
                     fits.writeto(mws_path, master_wvlsol, clobber=True)
                     self.output('Master Wavelength solution saved at '+mws_path)
 		
@@ -197,7 +197,7 @@ class process_sky(processor):
                     continue
 
                 #Load previously generated calibration products
-                self.load_calib_products(r.gnum)
+                self.load_calib_products(r.pnum)
 
                 #Make master sky frame, save to calib directory
                 self.output('Loading sky frames.')
@@ -210,14 +210,14 @@ class process_sky(processor):
                 master_sky = calibrate(master_sky, master_bias, self.fiber_mask)
                 self.output('Throughput correcting master sky frame.')
                 master_sky[0].data /= self.throughput_map
-                ms_path = self.calib_dirs[r.gnum]+'/master_sky.fits'
+                ms_path = self.calib_dirs[r.pnum]+'/master_sky.fits'
                 master_sky.writeto(ms_path, clobber=True)
                 self.output('Master sky frame saved at '+ms_path)
 
                 #Extract sky spectra, save to calib directory
                 self.output('Extracting sky spectra.')
                 sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
-                ss_path = self.calib_dirs[r.gnum]+'/sky_spectra.fits'
+                ss_path = self.calib_dirs[r.pnum]+'/sky_spectra.fits'
                 sky_fibers.save(ss_path)
                 self.output('Sky spectra saved at '+ss_path)
 
@@ -225,7 +225,7 @@ class process_sky(processor):
                 self.output('Producing master sky spectrum')
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
                 master_sky_spec.plot()
-                mss_path = self.calib_dirs[r.gnum]+'/'+self.cp_fnames['master_sky_spec']
+                mss_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['master_sky_spec']
                 master_sky_spec.save(mss_path)
                 self.output('Master sky spectrum saved at '+mss_path)
 
@@ -244,7 +244,7 @@ class process_target(processor):
                     continue
 
                 #Load previously generated calibration products
-                self.load_calib_products(r.gnum)
+                self.load_calib_products(r.pnum)
 
                 #Make master target frame, save to calib directory
                 self.output('Loading target frames.')
@@ -257,14 +257,14 @@ class process_target(processor):
                 master_tar = calibrate(master_tar, master_bias)
                 self.output('Throughput correcting master target frame.')
                 master_tar[0].data /= self.throughput_map
-                mt_path = self.calib_dirs[r.gnum]+'/master_target_frame.fits'
+                mt_path = self.calib_dirs[r.pnum]+'/master_target_frame.fits'
                 master_tar.writeto(mt_path, clobber=True)
                 self.output('Master target frame saved at '+mt_path)
 
                 #Extract target spectra, save to outdata directory
                 self.output('Extracting target spectra.')
                 target_fibers = optimal_extraction(master_tar, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
-                ts_path = self.outdata_dirs[r.gnum]+'/target_spectra.fits'
+                ts_path = self.outdata_dirs[r.pnum]+'/target_spectra.fits'
                 target_fibers.save(ts_path)
                 self.output('Target spectrum saved as '+ts_path)
 
@@ -276,14 +276,14 @@ class process_target(processor):
                             spec = target_fibers[i] - self.master_sky_spec
                             spec.plot(lw=1)
                             target_fibers[i] = spec
-                    ts_path = self.outdata_dirs[r.gnum]+'/target_spectra_nosky.fits'
+                    ts_path = self.outdata_dirs[r.pnum]+'/target_spectra_nosky.fits'
                     target_fibers.save(ts_path)
                     self.output('Target spectrum saved as '+ts_path)
                 except AttributeError:
                     self.output('No master sky spectrum found. Skipping sky subtraction.')
 
                 
-def get_recipes(dname, recipe=None, gnum=None, rtype=None):
+def get_recipes(dname, recipe=None, pnum=None, rtype=None):
     if recipe == None:
         recipe = 'recipes/'+dname+'.recipe'
 
@@ -291,9 +291,9 @@ def get_recipes(dname, recipe=None, gnum=None, rtype=None):
     recipe_lines = [line for line in filter(None, open(recipe).read().split('\n')) if line[0] != '#']
     if rtype != None:
         recipe_lines = [line for line in recipe_lines if len(line.split(',')) > 2 and line.split(',')[1] == rtype]
-    if gnum != None:
-        gnum = int(gnum)
-        recipe_lines = [line for line in recipe_lines if len(line.split(',')) > 1 and int(line.split(',')[0]) == gnum]
+    if pnum != None:
+        pnum = int(pnum)
+        recipe_lines = [line for line in recipe_lines if len(line.split(',')) > 1 and int(line.split(',')[0]) == pnum]
     return recipe_lines
 
 def make_master_bias(dname, recipe=None, output=stdout):

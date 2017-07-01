@@ -60,6 +60,7 @@ class wvlsolver:
         #The template solutions are generated using the central fiber, fnum = 50, so sort fnums
         # starting at 50, ascending to 99, then jumping to 49, and descending to 1.
         sorted_fnums = sorted([fnum for fnum in self.fnums if fnum >= 50]) + sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
+        #sorted_fnums = sorted([fnum for fnum in self.fnums if fnum <= 51], key = lambda x: -x)
 
         for fnum in sorted_fnums:
             if self.output != None:
@@ -100,14 +101,20 @@ class fiber_wvlsoler:
         self.linelist_counts = dat[:,1]
 
     def solve(self, npeaks=70):
+        #Remove strong cosmic rays.
+        l = len(self.pix)
+        self.pix, self.counts = remove_cosmics(self.pix, self.counts)
+        #print l-len(self.pix), 'COSMIC RAY POINTS FOUND AND REMOVED.'
+
         #Find peaks in the fiber.
         std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
+        npeaks = len(self.pix_peaks_all)
 
         #Sort fiber peaks by their height
         typical_counts = np.median(self.pix_counts_all)
         heights = [-abs(c - typical_counts) for c in self.pix_counts_all]
         self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(heights)]
-        print [p for p in self.pix_peaks_all if p > len(self.pix)]
+        #print [p for p in self.pix_peaks_all if p > len(self.pix)]
 
         #Find 5 good peaks for the initial wvlsol
         template_wvlsol = self.template
@@ -122,7 +129,7 @@ class fiber_wvlsoler:
 
             #self.plot_solution(peaks_pix=peaks_pix, peaks_wvl=peaks_wvl, wsol=wsol, title=str(five_peaks_i)+' '+str(len(peaks_pix))+' peaks, '+str(rsqrd))
 
-            if rsqrd/len(peaks_pix) <= 0.01:
+            if rsqrd/len(peaks_pix) <= 7e-5:
                 break
 
         n = max(five_peaks_i)+1
@@ -180,8 +187,14 @@ class fiber_wvlsoler:
         if 'title' in kwargs:
             ax.set_title(kwargs['title'])
         ax.plot(self.linelist_wvl, self.linelist_counts, color='red')
-        ax.plot(wvl, self.counts*max(self.linelist_counts)/max(self.counts), color='blue')
-        ax.scatter(peaks_wvl, [counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
+        counts_scale=max(self.linelist_counts)/max(self.counts)
+        ax.plot(wvl, self.counts*counts_scale, color='blue')
+        #ax.scatter(peaks_wvl, [counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
+        for pw in peaks_wvl:
+            ax.axvline(x=pw, color='salmon')
+        for pp in peaks_pix:
+            ax.axvline(x=wsol(pp),color='cornflowerblue')
+            ax.scatter(wsol(pp), counts[int(pp)]*counts_scale, color='black')
 
 
     def get_solution(self):
@@ -409,3 +422,16 @@ def fit_poly(x, y, n):
     coeff, err = curve_fit(polynomial, x, y, p0=[0, slope]+(use_n-1)*[0])
     coeff = list(coeff) + [0]*(n-use_n)
     return coeff
+
+def remove_cosmics(x, y, thresh=50):
+    keep_i = [i for i in list(range(len(y)))[1:-1] if y[i]/(0.5*(y[i-1]+y[i+1]))<thresh]
+    #print [y[i]/(0.5*(y[i-1]+y[i+1])) for i in list(range(len(y)))[1:-1] if not i in keep_i]
+    keep_x = [x[i] for i in keep_i]
+    keep_y = [y[i] for i in keep_i]
+    if y[0]/y[1] < thresh:
+        keep_x.insert(0,x[0])
+        keep_y.insert(0,y[0])
+    if y[-1]/y[-2] < thresh:
+        keep_x.append(x[-1])
+        keep_y.append(y[-1])
+    return np.array(keep_x), np.asarray(keep_y)
