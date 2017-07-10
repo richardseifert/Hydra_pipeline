@@ -160,6 +160,21 @@ def get_common_header(*args):
     new_header = common_header(headers, template_header)
     return new_header
 
+def middle_mjd(headers, card='MJD-OBS', exp_card='EXPTIME'):
+    plus=all([h[card][0]=='+' for h in headers])
+    mjd_list = [np.longdouble(h[card]) for h in headers]
+    exptimes = [np.longdouble(h[exp_card])/86400. for h in headers]
+
+    obs_start = mjd_list[np.argmin(mjd_list)]
+    obs_end = (mjd_list+exptimes)[np.argmax(mjd_list+exptimes)]
+    obs_end = np.max([mjd+exp for mjd,exp in zip(mjd_list, exptimes)])
+
+    mid_mjd = np.mean([obs_start, obs_end])
+    mid_mjd = str(mid_mjd)
+    if plus:
+        mid_mjd = '+'+mid_mjd
+    return mid_mjd
+
 def common_header(headers, template_header=None):
     headers = filter(None, headers)
     if len(headers) == 0:
@@ -170,16 +185,27 @@ def common_header(headers, template_header=None):
     else:
         new_header = template_header
 
+    #mjd_obs_comb = lambda headers: middle_mjd(headers,card='MJD-OBS')
+    comb_funcs = {'MJD-OBS' : lambda headers : middle_mjd(headers,card='MJD-OBS'),
+                  'JD' : lambda headers : middle_mjd(headers,card='JD')}
     sample_header = headers[0]
     for card in sample_header.keys():
-        useCard = True
-        for h in headers:
-            if (not card in h) or (h[card] != sample_header[card]):
-                useCard = False
+        if card == 'COMMENT' or card == 'HISTORY':
+            continue
 
-        if useCard:
-            if card != 'COMMENT' and card != 'HISTORY' and card != '':
-                new_header[card] = sample_header[card]
+        useCard = all([card in h for h in headers]) 
+        if not useCard:
+            continue
+
+        try:
+            new_val = comb_funcs[card](headers)
+        except KeyError:
+            useCard = all([h[card] == sample_header[card] for h in headers])
+            if not useCard:
+                continue
+            new_val = sample_header[card]
+
+        new_header[card] = new_val
 
     return new_header
 

@@ -14,13 +14,14 @@ import itertools
 polynomial = lambda x, *args: sum([coeff*x**power for power,coeff in enumerate(args)])
 
 class wvlsolver:
-    def __init__(self, comp, fiber_mask, use_fibers, profile_map, fast=False, output=None):
+    def __init__(self, comp, fiber_mask, use_fibers, profile_map, fast=False, output=None, plotter=None):
         self.comp = comp
         self.fmask = fiber_mask
         self.fnums = use_fibers
         self.pmap = profile_map
         self.fast = fast
         self.output=output
+        self.plotter=plotter
         self.fibers = {}
 
         #Load thar line list info.
@@ -67,8 +68,8 @@ class wvlsolver:
                 self.output.edit_message('Finding wavelength solution for fiber '+str(fnum))
             f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
             f_pix = np.arange(len(f_counts), dtype=np.float64)
-            self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast)
-            self.fibers[fnum].solve()
+            self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast, plotter=self.plotter)
+            self.fibers[fnum].solve(polynomial_plotname='F'+str(fnum)+'_polynomial.pdf', wvlsol_plotname='F'+str(fnum)+'_wvlsol.pdf')
             if self.output != None:
                 self.output.edit_message('fiber '+str(fnum)+' wavelength solution found using '+str(len(self.fibers[fnum].peaks_pix))+' ThAr lines.')
 
@@ -87,12 +88,13 @@ class wvlsolver:
         return wvlsol_map
 
 class fiber_wvlsoler:
-    def __init__(self, pix, counts, template, linelist, fast=False):
+    def __init__(self, pix, counts, template, linelist, fast=False, plotter=None):
         self.pix = np.array(pix)
         self.counts = np.array(counts)
         self.linelist = linelist
         self.template = template
         self.fast = fast
+        self.plotter = plotter
 
         #Load thar line list info.
         master_calib = 'calib/master_calib'
@@ -100,7 +102,7 @@ class fiber_wvlsoler:
         self.linelist_wvl = dat[:,0]
         self.linelist_counts = dat[:,1]
 
-    def solve(self, npeaks=70):
+    def solve(self, npeaks=70, **kwargs):
         #Remove strong cosmic rays.
         l = len(self.pix)
         self.pix, self.counts = remove_cosmics(self.pix, self.counts)
@@ -127,7 +129,7 @@ class fiber_wvlsoler:
             wsol = lambda x, c=coeffs: polynomial(x, *c)
             rsqrd = min_res_sqr(peaks_pix, peaks_wvl, wsol)
 
-            #self.plot_solution(peaks_pix=peaks_pix, peaks_wvl=peaks_wvl, wsol=wsol, title=str(five_peaks_i)+' '+str(len(peaks_pix))+' peaks, '+str(rsqrd))
+            #self.plot_solution(peaks_pix=peaks_pix, peaks_wvl=peaks_wvl, wsol=wsol, title=str(five_peaks_i)+' '+str(len(peaks_pix))+' peaks, '+str(rsqrd), **kwargs)
 
             if rsqrd/len(peaks_pix) <= 7e-5:
                 break
@@ -162,10 +164,10 @@ class fiber_wvlsoler:
             n += 1
 
         #print 'FINAL USING '+str(len(self.peaks_pix))+' PEAKS'
-        #self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd))
+        self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd), **kwargs)
         self.wsol = lambda x, c=self.wsol_coeffs: polynomial(x, *c)
 
-    def plot_solution(self, peaks_pix=None, peaks_wvl=None, counts=None, wsol=None, **kwargs):
+    def plot_solution(self, peaks_pix=None, peaks_wvl=None, counts=None, wsol=None, polynomial_plotname='polynomial.pdf', wvlsol_plotname='wvlsol.pdf', **kwargs):
         if type(peaks_pix)==type(None):
             peaks_pix = self.peaks_pix
         if type(peaks_wvl)==type(None):
@@ -174,27 +176,31 @@ class fiber_wvlsoler:
             counts = self.counts
         if wsol==None:
             wsol=self.wsol
-        fig, ax = plt.subplots()
-        if 'title' in kwargs:
-            ax.set_title(kwargs['title'])
-        ax.scatter(peaks_pix, peaks_wvl, color='blue')
         p = np.linspace(min(peaks_pix), max(peaks_pix), 1000)
         w = wsol(p)
-        ax.plot(p, w, color='red')
 
-        wvl = wsol(self.pix)
-        fig, ax = plt.subplots()
+        #Generate plot of polynomial fit.
+        self.plotter.clear_plot(figsize=(32,24))
         if 'title' in kwargs:
-            ax.set_title(kwargs['title'])
-        ax.plot(self.linelist_wvl, self.linelist_counts, color='red')
+            self.plotter.set_title(kwargs['title'])
+        self.plotter.scatter(peaks_pix, peaks_wvl, color='blue')
+        self.plotter.plot(p, w, color='red')
+        self.plotter.save(polynomial_plotname)
+
+        #Generate plot of wavelength solution.
+        wvl = wsol(self.pix)
+        self.plotter.clear_plot(figsize=(32,24))
+        if 'title' in kwargs:
+            self.plotter.set_title(kwargs['title'])
+        self.plotter.plot(self.linelist_wvl, self.linelist_counts, color='red')
         counts_scale=max(self.linelist_counts)/max(self.counts)
-        ax.plot(wvl, self.counts*counts_scale, color='blue')
-        #ax.scatter(peaks_wvl, [counts[i]*max(self.linelist_counts)/max(self.counts) for i in peaks_pix], color='black')
+        self.plotter.plot(wvl, self.counts*counts_scale, color='blue')
         for pw in peaks_wvl:
-            ax.axvline(x=pw, color='salmon')
+            self.plotter.axvline(x=pw, color='salmon')
         for pp in peaks_pix:
-            ax.axvline(x=wsol(pp),color='cornflowerblue')
-            ax.scatter(wsol(pp), counts[int(pp)]*counts_scale, color='black')
+            self.plotter.axvline(x=wsol(pp),color='cornflowerblue')
+            self.plotter.scatter(wsol(pp), counts[int(pp)]*counts_scale, color='black')
+        self.plotter.save(wvlsol_plotname)
 
 
     def get_solution(self):
@@ -424,7 +430,16 @@ def fit_poly(x, y, n):
     return coeff
 
 def remove_cosmics(x, y, thresh=50):
-    keep_i = [i for i in list(range(len(y)))[1:-1] if y[i]/(0.5*(y[i-1]+y[i+1]))<thresh]
+    '''
+    keep_i = []
+    prev_i = 0
+    for i in range(len(y))[1:]:
+        if y[i]/y[prev_i] < thresh:
+            keep_i.append(i)
+            prev_i = i
+    '''
+        
+    keep_i = [i for i in list(range(len(y)))[1:-1] if y[i]/(0.5*(y[i-1]+y[i+1]))]
     #print [y[i]/(0.5*(y[i-1]+y[i+1])) for i in list(range(len(y)))[1:-1] if not i in keep_i]
     keep_x = [x[i] for i in keep_i]
     keep_y = [y[i] for i in keep_i]

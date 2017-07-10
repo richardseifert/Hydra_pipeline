@@ -116,7 +116,7 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
                     keep_going = True
         p.extend(params)
 
-    plot=False
+    plot=True
     if plot:
         fig, ax = plt.subplots()
         ax.scatter(xdata, ydata)

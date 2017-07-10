@@ -1,7 +1,5 @@
 from ensure_path import ensure_path
 import numpy as np
-import matplotlib.pyplot as plt
-plt.ion()
 from fitstools import combine, save_2darr, mask_fits, manage_dtype, assign_header
 from astropy.io import fits
 from find_fibers import find_fibers
@@ -25,7 +23,7 @@ class processor(object):
                      'throughput_map':'throughput_map.fits',
                      'wavelength_solution':'wvlsol.fits',
                      'master_sky_spec':'master_sky_spec.fits'}
-	def __init__(self, dname, recipes=None, output_log=None):
+	def __init__(self, dname, recipes=None, output_log=None, plotter=None):
 		self.dname=dname
 		if recipes==None:
 			recipes = 'recipes/'+self.dname+'.recipe'
@@ -36,6 +34,7 @@ class processor(object):
 		self.output_log=output_log
 		self.init_dirs()
                 self.output_log.set_log_path(self.outdata+'/output.log')
+                self.plotter = plotter
 	def init_dirs(self):
                 self.indata = 'indata/'+self.dname
                 if not os.path.exists(self.indata):
@@ -46,11 +45,14 @@ class processor(object):
                 self.outdata = 'outdata/'+self.dname
                 ensure_path(self.outdata+'/')
                 self.outdata_dirs = {}
+                self.plot_dirs = {}
                 for pnum in list({r.pnum for r in self.recipes if r.rtype!='zero'}):
                     self.calib_dirs[pnum] = self.calib+'/P'+str(pnum)
                     ensure_path(self.calib_dirs[pnum])
                     self.outdata_dirs[pnum] = self.outdata+'/P'+str(pnum)
                     ensure_path(self.outdata_dirs[pnum])
+                    self.plot_dirs[pnum] = self.calib_dirs[pnum]+'/plots'
+                    ensure_path(self.plot_dirs[pnum]+'/')
 		
 	def load_calib_products(self, pnum):
 		for product in self.cp_fnames.keys():
@@ -73,10 +75,10 @@ class processor(object):
 				f.close()
 				setattr(self, product, d)
 
-	def output(self, message=None, progress=None):
+	def output(self, message=None, progress=None, **kwargs):
 		if self.output_log != None:
                     if message!=None:
-                            self.output_log.edit_message(message)
+                            self.output_log.edit_message(message, **kwargs)
                     if progress!=None:
                             self.output_log.edit_progress(progress)
 	def get_recipes(self, pnum=None, rtype=None):
@@ -105,8 +107,8 @@ class processor(object):
 			return self.master_bias
     
 class process_flat(processor):
-        def __init__(self, dname, recipes=None, output_log=None):
-            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+        def __init__(self, dname, recipes=None, output_log=None, plotter=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
 	
         def dispatch(self):
             master_bias = self.get_master_bias()
@@ -147,17 +149,20 @@ class process_flat(processor):
                 self.output('Throughput map saved at '+tm_path)
 
 class process_thar(processor):
-        def __init__(self, dname, recipes=None, output_log=None, fast=False):
-            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+        def __init__(self, dname, recipes=None, output_log=None, fast=False, plotter=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
             self.fast=fast
 	
         def dispatch(self):
                 master_bias = self.get_master_bias()
                 for n,r in enumerate(self.get_recipes(rtype='comp')):
-                    self.output(message='', progress='Processing '+self.dname+' flats: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+                    self.output(message='', progress='Processing '+self.dname+' comps: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |',add_to_log=False)
 
                     #Load previously generated calibration products
                     self.load_calib_products(r.pnum)
+
+                    #Set plotter to save plots in the correct plot directory
+                    self.plotter.set_rootpath(self.plot_dirs[r.pnum])
 
                     #Generate wavelength solutions for each comp frame, save to calib directory
                     wvlsol_maps = []
@@ -167,7 +172,7 @@ class process_thar(processor):
                         comp = calibrate(comp, master_bias, self.fiber_mask, lacosmic=False)
                         comp[0].data = comp[0].data / self.throughput_map
                         #wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
-                        w = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log)
+                        w = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log, plotter=self.plotter)
                         w.solve()
                         wvlsol_map = w.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
@@ -183,13 +188,16 @@ class process_thar(processor):
                     self.output('Master Wavelength solution saved at '+mws_path)
 		
 class process_sky(processor):
-        def __init__(self, dname, recipes=None, output_log=None):
-            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+        def __init__(self, dname, recipes=None, output_log=None, plotter=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
 	
         def dispatch(self):
             master_bias = self.get_master_bias()
             for i,r in enumerate(self.get_recipes(rtype='sky')):
                 self.output(message='', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
+
+                #Set plotter to save plots in the correct plot directory
+                self.plotter.set_rootpath(self.plot_dirs[r.pnum])
 
                 #Check that there are actually sky fibers in need of reducing
                 if len(r.filenames) == 0:
@@ -204,6 +212,8 @@ class process_sky(processor):
                 skys = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
                 self.output('Median combining sky frames.')
                 master_sky = combine(*skys)
+                ms_path = self.calib_dirs[r.pnum]+'/master_sky.fits'
+                master_sky.writeto(ms_path, clobber=True)
                 for sky in skys:
                     sky.close()
                 self.output('Bias correcting master sky frame.')
@@ -224,14 +234,15 @@ class process_sky(processor):
                 #Make master sky spectrum, save to calib directory
                 self.output('Producing master sky spectrum')
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
-                master_sky_spec.plot()
+                master_sky_spec.plot(ax=self.plotter)
+                self.plotter.save('master_sky.pdf')
                 mss_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['master_sky_spec']
                 master_sky_spec.save(mss_path)
                 self.output('Master sky spectrum saved at '+mss_path)
 
 class process_target(processor):
-        def __init__(self, dname, recipes=None, output_log=None):
-            processor.__init__(self, dname, recipes=recipes, output_log=output_log)
+        def __init__(self, dname, recipes=None, output_log=None, plotter=None):
+            processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
 	
         def dispatch(self):
             master_bias = self.get_master_bias()
@@ -525,9 +536,6 @@ def sky_dorecipe(r, dname, output=None):
     sky_fibers.save(ss_path)
     output.edit_message('Sky spectra saved at '+ss_path)
     master_sky_spec = median_spectra(sky_fibers.get_spectra())
-    if False:
-        fig, ax = plt.subplots()
-        master_sky_spec.plot(ax=ax, color='black', lw=1)
 
     mss_path = calib_dir+'/master_sky_spec.dat'
     master_sky_spec.save(mss_path)

@@ -9,9 +9,13 @@ class output_log:
         self.writer = writer
         self.progress_str = ""
         self.message_str = ""
+        self.log_str = ""
         self.coverlen = 0
     def set_log_path(self, log_path):
         self.log_path = log_path
+        f = open(self.log_path, 'a')
+        f.write(self.log_str)
+        f.close()
     def update(self):
         strg = self.progress_str+' '+self.message_str
         strg = strg.ljust(self.coverlen)
@@ -24,9 +28,15 @@ class output_log:
     def edit_message(self, new_str, add_to_log=True):
         self.message_str = new_str
         self.update()
-        if add_to_log and self.log_path != None:
-            dt_str = time.strftime("%Y-%m-%dT%H:%M:%S")
+        if add_to_log:
+            self.log(new_str)
+    def log(self, new_str):
+        dt_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        log_newline = '['+dt_str+'] '+new_str+'\n'
+        self.log_str += log_newline
+        if self.log_path != None:
             f = open(self.log_path, 'a')
-            f.write('['+dt_str+'] '+self.message_str+'\n')
+            f.write(log_newline)
+            f.close()
     def linebreak(self):
         self.writer.write('\n')
