@@ -47,11 +47,11 @@ class wvlsolver:
         w = template_dat[:,0]
         coeffs = fit_poly(p, w, 3)
         template = lambda x, c=coeffs: polynomial(x, *c)
-
+        
         def get_template(fnum):
             nearest_fnums = sorted(self.fnums, key=lambda n: abs(fnum-n))
             for n in nearest_fnums:
-                if n in self.fibers.keys():
+                if n in self.fibers.keys() and n in good_fiber_wvlsols:
                     return self.fibers[n].get_solution()
             return template
 
@@ -63,6 +63,7 @@ class wvlsolver:
         sorted_fnums = sorted([fnum for fnum in self.fnums if fnum >= 50]) + sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
         #sorted_fnums = sorted([fnum for fnum in self.fnums if fnum <= 51], key = lambda x: -x)
 
+        good_fiber_wvlsols = []
         for fnum in sorted_fnums:
             if self.output != None:
                 self.output.edit_message('Finding wavelength solution for fiber '+str(fnum))
@@ -70,6 +71,14 @@ class wvlsolver:
             f_pix = np.arange(len(f_counts), dtype=np.float64)
             self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast, plotter=self.plotter)
             self.fibers[fnum].solve(polynomial_plotname='F'+str(fnum)+'_polynomial.pdf', wvlsol_plotname='F'+str(fnum)+'_wvlsol.pdf')
+
+            #Check how many peaks were used in the fit to help determine if it's good or not.
+            if len(self.fibers[fnum].peaks_pix) >= 26:
+                good_fiber_wvlsols.append(fnum)
+            elif self.output != None:
+                self.output.edit_message('Bad solution found for fiber '+str(fnum)+'.')
+
+
             if self.output != None:
                 self.output.edit_message('fiber '+str(fnum)+' wavelength solution found using '+str(len(self.fibers[fnum].peaks_pix))+' ThAr lines.')
 
