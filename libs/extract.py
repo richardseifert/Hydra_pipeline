@@ -10,9 +10,15 @@ class fibers:
         self.spectra = {}
     def add_spectrum(self, fiber_num, spec):
         self.spectra[fiber_num] = spec
-    def get_spectra(self):
+    def get_spectra(self, as_dict=False):
+        if as_dict:
+            return self.spectra
         fiber_nums = sorted(self.spectra.keys())
         return [self.spectra[fiber_num] for fiber_num in fiber_nums]
+    def get_spectrum(self, fiber_num):
+        return self.spectra[fiber_num]
+    def get_fiber_numbers(self):
+        return sorted(self.spectra.keys())
     def __getitem__(self, i):
         return self.get_spectra()[i]
     def __setitem__(self, i, new_spec):
@@ -145,7 +151,7 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
         V = (one*rn**2 + abs(gain*D) + dn**2)
         
         f_numer = P*D/V
-        var_numer = P/V
+        var_numer = P
         denom = P**2/V
 
         if type(wvlsol)!=type(None):
