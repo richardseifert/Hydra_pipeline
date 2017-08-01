@@ -238,7 +238,7 @@ class spectrum(curve):
         ax.set_xlabel('Wavelength ($\AA$)')
         ax.set_ylabel('Flux')
         ax.plot(self.x, self.y, **kwargs)
-        if self.yerr!= None:
+        if type(self.yerr) != type(None):
             ax.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, facecolor='cornflowerblue', linewidth=0.0)
         return ax
 def sum_spectra(spectra, header=None, **kwargs):

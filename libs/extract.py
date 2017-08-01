@@ -6,8 +6,8 @@ from spectra import spectrum, interp_add
 from astropy.io import fits
 
 class fibers:
-    def __init__(self):
-        self.spectra = {}
+    def __init__(self, init_spectra={}):
+        self.spectra = dict(init_spectra)
     def add_spectrum(self, fiber_num, spec):
         self.spectra[fiber_num] = spec
     def get_spectra(self, as_dict=False):
@@ -156,15 +156,13 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
 
         if type(wvlsol)!=type(None):
             wvlsol_fib = mask_fits(wvlsol, fiber_mask, maskval=fnum, reshape=True)
+
             #Use the center of the fiber as the wavelength domain.
             center_i = wvlsol_fib.shape[1]//2
-            wvlsol_slices = [wvlsol_fib[:,i] for i in range(len(wvlsol_fib[0]))]
-            f_numer_slices = [f_numer[:,i] for i in range(len(f_numer[0]))]
-            var_numer_slices = [var_numer[:,i] for i in range(len(var_numer[0]))]
-            denom_slices = [denom[:,i] for i in range(len(denom[0]))]
-            wavelength, sum_f_numer = interp_add(*zip(wvlsol_slices, f_numer_slices), x_interp_i=center_i)
-            wavelength, sum_var_numer = interp_add(*zip(wvlsol_slices, var_numer_slices), x_interp_i=center_i)
-            wavelength, sum_denom = interp_add(*zip(wvlsol_slices, denom_slices), x_interp_i=center_i)
+
+            wavelength, sum_f_numer = interp_add(*zip(wvlsol_fib.T, f_numer.T), x_interp_i=center_i)
+            wavelength, sum_var_numer = interp_add(*zip(wvlsol_fib.T, var_numer.T), x_interp_i=center_i)
+            wavelength, sum_denom = interp_add(*zip(wvlsol_fib.T, denom.T), x_interp_i=center_i)
         else:
             sum_f_numer = np.sum(f_numer, axis=0)
             sum_var_numer = np.sum(var_numer, axis=0)

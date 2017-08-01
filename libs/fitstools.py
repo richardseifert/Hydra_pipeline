@@ -260,13 +260,18 @@ def pad_array(arr, pad_val, length, pad='back'):
 
 @manage_dtype()
 def mask_fits(some_fits, some_mask, maskval=1, fillval=0, reshape=False):
-    if reshape:
-        return mask_fits_reshape(some_fits, some_mask, maskval)
-
     if some_fits.shape != some_mask.shape:
         raise ValueError('Data and mask must be the same dimensions')
-    return np.where(some_mask == maskval, some_fits, fillval)
+    masked = np.where(some_mask == maskval, some_fits, fillval)
+    if reshape:
+        height = len(masked)
+        masked = masked[some_mask == maskval]
+        width = masked.size/height
+        masked = masked.reshape((height, len(masked)/height))
+    return masked
 
+'''
+#Takes too long to go manually through each pixel.
 def mask_fits_reshape(some_fits, some_mask, maskval=1):
     result = []
     for row in range(len(some_mask)):
@@ -276,3 +281,4 @@ def mask_fits_reshape(some_fits, some_mask, maskval=1):
                 result[row].append(some_fits[row][column])
     result = np.asarray(result)
     return result
+'''
