@@ -6,7 +6,7 @@ from find_fibers import find_fibers
 from fiber_profile import make_fiber_profile_map
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol, wvlsolver
-from extract import optimal_extraction
+from extract import fibers, optimal_extraction
 from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra
 from sys import stdout
 import os
@@ -148,6 +148,7 @@ class process_flat(processor):
                 fits.writeto(tm_path, throughput_map, clobber=True)
                 self.output('Throughput map saved at '+tm_path)
 
+
 class process_thar(processor):
         def __init__(self, dname, recipes=None, output_log=None, fast=False, plotter=None):
             processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
@@ -187,6 +188,50 @@ class process_thar(processor):
                     fits.writeto(mws_path, master_wvlsol, clobber=True)
                     self.output('Master Wavelength solution saved at '+mws_path)
 		
+class process_skyflat(processor):
+    def __init__(self, dname, recipes=None, output_log=None, plotter=None):
+        processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
+
+    def dispatch(self):
+        master_bias = self.get_master_bias()
+        for n,r in enumerate(self.get_recipes(rtype='skyflat')):
+            self.output(message='', progress='Processing '+self.dname+' skyflats: '+str(n+1)+'/'+str(len(self.get_recipes(rtype='skyflat')))+' |')
+
+            #Set plotter to save plots in the correct plot directory
+            self.plotter.set_rootpath(self.plot_dirs[r.pnum])
+
+            #Load previously generated calibration products
+            self.load_calib_products(r.pnum)
+
+            #Extract skyflat spectra from each frame and group by fiber number.
+            skyflat_specs = {}
+            for fname in r.filenames:
+                self.output('Extracting skyflat spectra from '+fname)
+                skyflat_frame = calibrate(fits.open(self.indata+'/'+fname), master_bias, lacosmic=False)
+                skyflat_frame[0].data = skyflat_frame[0].data / self.throughput_map
+                skyflat_fibers = optimal_extraction(skyflat_frame, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
+                for fnum in skyflat_fibers.get_fiber_numbers():
+                    if not fnum in skyflat_specs:
+                        skyflat_specs[fnum] = []
+                    skyflat_specs[fnum].append(skyflat_fibers.get_spectrum(fnum))
+
+            #Normalize skyflat spectra to have same median. Then median combine all spectra of the same fiber.
+            median_counts = np.median([np.nanmedian(s.get_flux()) for sfs in skyflat_specs.values() for s in sfs])
+            for fnum in skyflat_fibers.get_fiber_numbers():
+                self.plotter.clear_plot()
+                for i,sp in enumerate(skyflat_specs[fnum]):
+                    skyflat_specs[fnum][i] = sp*(median_counts/np.nanmedian(sp.get_flux()))
+                    skyflat_specs[fnum][i].plot(ax=self.plotter, color='gray', lw=1)
+                skyflat_specs[fnum] = median_spectra(skyflat_specs[fnum])
+                skyflat_specs[fnum].plot(ax=self.plotter, color='blue')
+
+            #Save output.
+            skyflat_fibers = fibers(skyflat_specs)            
+            skyflat_fibers.save(self.calib_dirs[r.pnum]+'/skyflat_spec.fits')
+
+
+
+
 class process_sky(processor):
         def __init__(self, dname, recipes=None, output_log=None, plotter=None):
             processor.__init__(self, dname, recipes=recipes, output_log=output_log, plotter=plotter)
@@ -217,17 +262,19 @@ class process_sky(processor):
                 for sky in skys:
                     sky.close()
                 self.output('Bias correcting master sky frame.')
-                master_sky = calibrate(master_sky, master_bias, self.fiber_mask)
+                master_sky = calibrate(master_sky, master_bias, self.fiber_mask, lacosmic=False) #temporary lacosmic=False
                 self.output('Throughput correcting master sky frame.')
                 master_sky[0].data /= self.throughput_map
                 ms_path = self.calib_dirs[r.pnum]+'/master_sky.fits'
                 master_sky.writeto(ms_path, clobber=True)
                 self.output('Master sky frame saved at '+ms_path)
 
-                #Extract sky spectra, save to calib directory
+                #Extract sky spectra, save to outdata directory
                 self.output('Extracting sky spectra.')
                 sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
-                ss_path = self.calib_dirs[r.pnum]+'/sky_spectra.fits'
+                for sp in sky_fibers.get_spectra():
+                    sp.plot(ax=self.plotter, color='gray', lw=1)
+                ss_path = self.outdata_dirs[r.pnum]+'/sky_spectra.fits'
                 sky_fibers.save(ss_path)
                 self.output('Sky spectra saved at '+ss_path)
 
@@ -265,7 +312,7 @@ class process_target(processor):
                 for f in tars:
                     f.close()
                 self.output('Bias correcting master target frame.')
-                master_tar = calibrate(master_tar, master_bias)
+                master_tar = calibrate(master_tar, master_bias, lacosmic=False) #Temp lacosmic=False
                 self.output('Throughput correcting master target frame.')
                 master_tar[0].data /= self.throughput_map
                 mt_path = self.calib_dirs[r.pnum]+'/master_target_frame.fits'
@@ -284,9 +331,9 @@ class process_target(processor):
                 try:
                     self.output('Subtracting sky spectrum from target spectra.')
                     for i in range(len(target_fibers.get_spectra())):
-                            spec = target_fibers[i] - self.master_sky_spec
-                            spec.plot(lw=1)
-                            target_fibers[i] = spec
+                        spec = target_fibers[i] - self.master_sky_spec
+                        spec.plot(lw=1)
+                        target_fibers[i] = spec
                     ts_path = self.outdata_dirs[r.pnum]+'/target_spectra_nosky.fits'
                     target_fibers.save(ts_path)
                     self.output('Target spectrum saved as '+ts_path)

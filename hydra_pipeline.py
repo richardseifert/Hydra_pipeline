@@ -28,6 +28,11 @@ def thar(direc, recipe=None, fast=False):
     output.edit_message("*** COMMAND ISSUED: 'python hydra_pipeline.py thar "+direc+"' ***")
     process.process_thar(direc, recipe, output_log=output, fast=fast, plotter=p).dispatch()
 
+def skyflat(direc, recipe=None):
+    output.edit_message('')
+    output.edit_message("*** COMMAND ISSUED: 'python hydra_pipeline.py skyflat "+direc+"' ***")
+    process.process_skyflat(direc, recipe, output_log=output, plotter=p).dispatch()
+
 def sky(direc, recipe=None):
     output.edit_message('')
     output.edit_message("*** COMMAND ISSUED: 'python hydra_pipeline.py sky "+direc+"' ***")
@@ -46,7 +51,7 @@ def full_reduce(direc, recipe=None, fast=False):
     process.process_sky(direc, recipe, output_log=output, plotter=p).dispatch()
     process.process_target(direc, recipe, output_log=output, plotter=p).dispatch()
 
-command_list = [recipe_log, flat, thar, sky, target, full_reduce]
+command_list = [recipe_log, flat, thar, skyflat, sky, target, full_reduce]
 
 parser = argh.ArghParser()
 parser.add_commands(command_list)
