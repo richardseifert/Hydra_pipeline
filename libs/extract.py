@@ -4,6 +4,7 @@ plt.ion()
 from fitstools import mask_fits, row_avg, manage_dtype, common_header, pad_array, display
 from spectra import spectrum, interp_add
 from astropy.io import fits
+from spectra import rmean_spectra, scale_spectra
 
 class fibers:
     def __init__(self, init_spectra={}):
@@ -17,6 +18,11 @@ class fibers:
         return [self.spectra[fiber_num] for fiber_num in fiber_nums]
     def get_spectrum(self, fiber_num):
         return self.spectra[fiber_num]
+    def scale_spectra(self):
+        fiber_nums = sorted(self.spectra.keys())
+        sp_list = [self.spectra[fnum] for fnum in fiber_nums]
+        scaled_sp_list = scale_spectra(sp_list)
+        self.spectra = {fnum:sp for fnum,sp in zip(fiber_nums, scaled_sp_list)}
     def get_fiber_numbers(self):
         return sorted(self.spectra.keys())
     def __getitem__(self, i):
@@ -178,3 +184,32 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
         res.add_spectrum(fnum, spec)
 
     return res
+
+def robust_mean_extraction(images, fiber_mask, profile_map, wvlsol, use_fibers, plotter=None):
+    #Extract skyflat spectra from each frame and group by fiber number.
+    comb_specs = {}
+    for image in images:
+        comb_fibers = optimal_extraction(image, fiber_mask, profile_map, wvlsol, use_fibers)
+        for fnum in use_fibers:
+            if not fnum in comb_specs:
+                comb_specs[fnum] = []
+            comb_specs[fnum].append(comb_fibers.get_spectrum(fnum))
+
+    #Normalize skyflat spectra to have same median. Then median combine all spectra of the same fiber.
+    #median_counts = np.median([np.nanmedian(s.get_flux()) for sfs in comb_specs.values() for s in sfs])
+    for fnum in comb_fibers.get_fiber_numbers():
+        if plotter!=None:
+            plotter.clear_plot()
+        median_counts = np.median([np.nanmedian(sp.get_flux()) for sp in comb_specs[fnum]])
+        comb_specs[fnum] = scale_spectra(comb_specs[fnum])
+        if plotter!=None:
+            for sp in comb_specs[fnum][:1]:
+                sp.plot(ax=plotter, color='gray', lw=1)
+        comb_specs[fnum] = rmean_spectra(comb_specs[fnum])
+        if plotter!=None:
+            comb_specs[fnum].plot(ax=plotter, color='blue')
+
+    #Make fibers object from robust mean combined spectra.
+    comb_fibers = fibers(comb_specs) 
+
+    return comb_fibers

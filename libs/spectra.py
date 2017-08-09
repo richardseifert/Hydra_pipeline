@@ -163,6 +163,27 @@ def interp_mean(*spectra, **kwargs):
     yerr_interp = np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5/N
     return x_interp, y_interp
 
+def robust_mean(y_vals, y_errs, m=5):
+    y_vals = np.array(y_vals)
+    y_errs = np.array(y_errs)
+    c = np.nanmedian(y_vals)
+    keep = (abs(y_vals - c) < m*y_errs)
+    if len(y_vals[keep]) > 0:
+        try:
+            mean = np.average(y_vals[keep], weights=1/y_errs[keep])
+        except ZeroDivisionError:
+            mean = np.nanmean(y_vals[keep])
+    else:
+        mean = np.nanmean(y_vals)
+    return mean
+
+@unpack_xy(preserve=True)
+def interp_rmean(*spectra, **kwargs):
+    x_interp, y_interp_arrs, yerr_interp_arrs = interp_helper(*spectra, **kwargs)
+    y_interp = [robust_mean([y[i] for y in y_interp_arrs], [yerr[i] for yerr in yerr_interp_arrs]) for i in range(len(x_interp))]
+    yerr_interp = np.nansum([yerr**2 for yerr in yerr_interp_arrs], axis=0)**0.5
+    return x_interp, y_interp, yerr_interp
+
 @unpack_xy(preserve=True)
 def interp_median(*spectra, **kwargs):
     x_interp, y_interp_arrs, yerr_interp_arrs = interp_helper(*spectra, **kwargs)
@@ -262,3 +283,21 @@ def mean_spectra(spectra, header=None, **kwargs):
     mean_curve = interp_mean(*spectra, **kwargs)
     mean_spectrum = spectrum(mean_curve, header=header)
     return mean_spectrum
+
+def rmean_spectra(spectra, header=None, **kwargs):
+    if header==None:
+        #Combine headers somehow
+        pass
+    rmean_curve = interp_rmean(*spectra, **kwargs)
+    rmean_spectrum = spectrum(rmean_curve, header=header)
+    return rmean_spectrum
+
+def scale_spectra(spectra, method='median'):
+    if method == 'median':
+        statistic = np.nanmedian
+    scaled_spectra = []
+    scale_value = statistic([statistic(sp.get_flux()) for sp in spectra])
+    for sp in spectra:
+        scaled_spectra.append(sp*(scale_value/statistic(sp.get_flux())))
+    return scaled_spectra
+

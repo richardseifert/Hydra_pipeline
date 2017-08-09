@@ -6,8 +6,8 @@ from find_fibers import find_fibers
 from fiber_profile import make_fiber_profile_map
 from throughput import make_throughput_map
 from find_wvlsol import wvlsol, wvlsolver
-from extract import fibers, optimal_extraction
-from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra
+from extract import fibers, optimal_extraction, robust_mean_extraction
+from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra, rmean_spectra
 from sys import stdout
 import os
 from os.path import exists
@@ -204,30 +204,19 @@ class process_skyflat(processor):
             self.load_calib_products(r.pnum)
 
             #Extract skyflat spectra from each frame and group by fiber number.
-            skyflat_specs = {}
+            skyflat_frames = []
             for fname in r.filenames:
                 self.output('Extracting skyflat spectra from '+fname)
                 skyflat_frame = calibrate(fits.open(self.indata+'/'+fname), master_bias, lacosmic=False)
                 skyflat_frame[0].data = skyflat_frame[0].data / self.throughput_map
-                skyflat_fibers = optimal_extraction(skyflat_frame, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
-                for fnum in skyflat_fibers.get_fiber_numbers():
-                    if not fnum in skyflat_specs:
-                        skyflat_specs[fnum] = []
-                    skyflat_specs[fnum].append(skyflat_fibers.get_spectrum(fnum))
+                skyflat_frames.append(skyflat_frame)
 
-            #Normalize skyflat spectra to have same median. Then median combine all spectra of the same fiber.
-            median_counts = np.median([np.nanmedian(s.get_flux()) for sfs in skyflat_specs.values() for s in sfs])
-            for fnum in skyflat_fibers.get_fiber_numbers():
-                self.plotter.clear_plot()
-                for i,sp in enumerate(skyflat_specs[fnum]):
-                    skyflat_specs[fnum][i] = sp*(median_counts/np.nanmedian(sp.get_flux()))
-                    skyflat_specs[fnum][i].plot(ax=self.plotter, color='gray', lw=1)
-                skyflat_specs[fnum] = median_spectra(skyflat_specs[fnum])
-                skyflat_specs[fnum].plot(ax=self.plotter, color='blue')
-
-            #Save output.
-            skyflat_fibers = fibers(skyflat_specs)            
+            skyflat_fibers = robust_mean_extraction(skyflat_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers, self.plotter)
+            skyflat_fibers.scale_spectra()
             skyflat_fibers.save(self.calib_dirs[r.pnum]+'/skyflat_spec.fits')
+            for sp in skyflat_fibers.get_spectra():
+                self.plotter.clear_plot()
+                sp.plot(ax=self.plotter)
 
 
 
@@ -238,6 +227,7 @@ class process_sky(processor):
 	
         def dispatch(self):
             master_bias = self.get_master_bias()
+
             for i,r in enumerate(self.get_recipes(rtype='sky')):
                 self.output(message='', progress='Processing '+self.dname+' flats: '+str(i+1)+'/'+str(len(self.get_recipes(rtype='flat')))+' |')
 
@@ -254,29 +244,20 @@ class process_sky(processor):
 
                 #Make master sky frame, save to calib directory
                 self.output('Loading sky frames.')
-                skys = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
-                self.output('Median combining sky frames.')
-                master_sky = combine(*skys)
-                ms_path = self.calib_dirs[r.pnum]+'/master_sky.fits'
-                master_sky.writeto(ms_path, clobber=True)
-                for sky in skys:
-                    sky.close()
-                self.output('Bias correcting master sky frame.')
-                master_sky = calibrate(master_sky, master_bias, self.fiber_mask, lacosmic=False) #temporary lacosmic=False
-                self.output('Throughput correcting master sky frame.')
-                master_sky[0].data /= self.throughput_map
-                ms_path = self.calib_dirs[r.pnum]+'/master_sky.fits'
-                master_sky.writeto(ms_path, clobber=True)
-                self.output('Master sky frame saved at '+ms_path)
+
+                #Load in and calibrate frames.
+                sky_frames = []
+                for fname in r.filenames:
+                    sky_frame = fits.open(self.indata+'/'+fname)
+                    sky_frame = calibrate(sky_frame, master_bias, self.fiber_mask, lacosmic=False)
+                    sky_frame[0].data /= self.throughput_map
+                    sky_frames.append(sky_frame)
 
                 #Extract sky spectra, save to outdata directory
-                self.output('Extracting sky spectra.')
-                sky_fibers = optimal_extraction(master_sky, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
+                sky_fibers = robust_mean_extraction(sky_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
+                #sky_fibers.scale_spectra()
                 for sp in sky_fibers.get_spectra():
-                    sp.plot(ax=self.plotter, color='gray', lw=1)
-                ss_path = self.outdata_dirs[r.pnum]+'/sky_spectra.fits'
-                sky_fibers.save(ss_path)
-                self.output('Sky spectra saved at '+ss_path)
+                    sp.plot(ax=self.plotter, color='gray')
 
                 #Make master sky spectrum, save to calib directory
                 self.output('Producing master sky spectrum')
@@ -306,28 +287,24 @@ class process_target(processor):
 
                 #Make master target frame, save to calib directory
                 self.output('Loading target frames.')
-                tars = [fits.open(self.indata+'/'+filename) for filename in r.filenames]
-                self.output('Median combining target frames.')
-                master_tar = combine(*tars)
-                for f in tars:
-                    f.close()
-                self.output('Bias correcting master target frame.')
-                master_tar = calibrate(master_tar, master_bias, lacosmic=False) #Temp lacosmic=False
-                self.output('Throughput correcting master target frame.')
-                master_tar[0].data /= self.throughput_map
-                mt_path = self.calib_dirs[r.pnum]+'/master_target_frame.fits'
-                master_tar.writeto(mt_path, clobber=True)
-                self.output('Master target frame saved at '+mt_path)
 
-                #Extract target spectra, save to outdata directory
-                self.output('Extracting target spectra.')
-                target_fibers = optimal_extraction(master_tar, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
+                target_frames = []
+                print r.filenames
+                for fname in r.filenames:
+                    print fname
+                    target_frame = fits.open(self.indata+'/'+fname)
+                    target_frame = calibrate(target_frame, master_bias, self.fiber_mask, lacosmic=False)
+                    target_frame[0].data /= self.throughput_map
+                    target_frames.append(target_frame)
+
+                target_fibers = robust_mean_extraction(target_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers, self.plotter)
+
                 ts_path = self.outdata_dirs[r.pnum]+'/target_spectra.fits'
                 target_fibers.save(ts_path)
                 self.output('Target spectrum saved as '+ts_path)
 
-                #If master sky spectrum exists, subtract sky from target spectra
-                #Save to outdata directory
+                #If master sky spectrum exists, subtract sky from target spectra.
+                #Save to outdata directory.
                 try:
                     self.output('Subtracting sky spectrum from target spectra.')
                     for i in range(len(target_fibers.get_spectra())):
