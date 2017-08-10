@@ -119,7 +119,6 @@ class fiber_wvlsoler:
 
         #Find peaks in the fiber.
         std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
-        npeaks = len(self.pix_peaks_all)
 
         #Sort fiber peaks by their height
         typical_counts = np.median(self.pix_counts_all)
