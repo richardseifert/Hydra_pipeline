@@ -35,5 +35,6 @@ class plotter:
 class null_object:
     def __getattr__(self, name):
         def method(*args, **kwargs):
+            print'NULL_METHOD'
             pass
         return method
