@@ -167,6 +167,7 @@ class process_thar(processor):
 
                     #Generate wavelength solutions for each comp frame, save to calib directory
                     wvlsol_maps = []
+                    summary = {}
                     for i,fname in enumerate(r.filenames):
                         self.output('Finding wavelength solution from '+fname)
                         comp = fits.open(self.indata+'/'+fname)
@@ -174,12 +175,28 @@ class process_thar(processor):
                         comp[0].data = comp[0].data / self.throughput_map
                         #wvlsol_map = wvlsol(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast)
                         w = wvlsolver(comp, self.fiber_mask, r.fibers, self.profile_map, fast=self.fast, output=self.output_log, plotter=self.plotter)
+                        w.set_path(self.calib_dirs[r.pnum]+'/'+fname.split('.fits')[0]+'_summary.dat')
                         w.solve()
+
+                        #Add info to wavelength solution summary
+                        npeaks_summary = w.get_fiber_npeaks()
+                        for fnum in npeaks_summary.keys():
+                            if not fnum in summary:
+                                summary[fnum] = []
+                            summary[fnum].append(npeaks_summary[fnum])
+
+                        #Save wavelength solution
                         wvlsol_map = w.get_wvlsol_map()
                         wvlsol_maps.append(wvlsol_map)
                         ws_path = self.calib_dirs[r.pnum]+'/wvlsol_'+fname.split('.')[0]+'.fits'
                         fits.writeto(ws_path, wvlsol_map, clobber=True)
                         self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
+
+                    #Save summary of wavelength solutions
+                    f = open(self.calib_dirs[r.pnum]+'/wvlsol_summary.dat')
+                    for fnum in sorted(summary.keys(), key=lambda n: int(n)):
+                        f.write(','.join([str(n) for n in ([fnum]+summary[fnum])])+'\n')
+                    f.close()
 
                     #Generate master wavelength solution as average of the individual wavelength solutions,
                     # save to calib directory

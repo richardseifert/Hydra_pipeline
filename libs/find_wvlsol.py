@@ -39,6 +39,10 @@ class wvlsolver:
         thar_peaks = np.loadtxt(master_calib+'/thar_peaks.dat')
         self.linelist = thar_peaks[:,0]
 
+    def set_path(self, new_path):
+        self.savepath = new_path
+        
+
     def solve(self):
         #Load the template wavelength solution.
         master_calib = 'calib/master_calib'
@@ -64,6 +68,7 @@ class wvlsolver:
         #sorted_fnums = sorted([fnum for fnum in self.fnums if fnum <= 51], key = lambda x: -x)
 
         good_fiber_wvlsols = []
+        bad_fiber_wvlsols = []
         for fnum in sorted_fnums:
             if self.output != None:
                 self.output.edit_message('Finding wavelength solution for fiber '+str(fnum))
@@ -76,8 +81,16 @@ class wvlsolver:
             if len(self.fibers[fnum].peaks_pix) >= 26:
                 good_fiber_wvlsols.append(fnum)
             elif self.output != None:
+                bad_fiber_wvlsols.append(fnum)
                 self.output.edit_message('Bad solution found for fiber '+str(fnum)+'.')
-
+            try:
+                #Keep an updating record of which fibers give good solutions and which don't.
+                f = open(self.savepath, 'w')
+                f.write(','.join([str(fn) for fn in good_fiber_wvlsols])+'\n')
+                f.write(','.join([str(fn) for fn in bad_fiber_wvlsols])+'\n')
+                f.close()
+            except (AttributeError, TypeError) as e:
+                pass
 
             if self.output != None:
                 self.output.edit_message('fiber '+str(fnum)+' wavelength solution found using '+str(len(self.fibers[fnum].peaks_pix))+' ThAr lines.')
@@ -95,6 +108,8 @@ class wvlsolver:
             wvlsol_map += np.transpose(np.multiply(np.transpose(ones_fiber), wsol_arr))
 
         return wvlsol_map
+    def get_fiber_npeaks(self):
+        return {fnum:self.fibers[fnum].get_npeaks for fnum in self.fnums}
 
 class fiber_wvlsoler:
     def __init__(self, pix, counts, template, linelist, fast=False, plotter=None):
@@ -149,8 +164,8 @@ class fiber_wvlsoler:
 
         self.peaks_pix = []
 
-        #print 'n =',n
-        while n <= npeaks:
+        npeaks = min([npeaks, len(self.pix_peaks_all)])
+        while n < npeaks:
             use_peaks_pix = [self.pix_peaks_all[i] for i in range(n) if not i in ignore_peaks_pix]
             peaks_pix, peaks_wvl = match_peaks(use_peaks_pix, self.linelist, template_wvlsol)
             n_used = len(peaks_pix)
@@ -217,6 +232,11 @@ class fiber_wvlsoler:
         except AttributeError:
             self.solve()
             return self.wsol
+    def get_npeaks(self):
+        try:
+            return len(self.peaks_wvl)
+        except:
+            return 0
 
         
 @manage_dtype(use_args=[0,1], with_header=[0])
