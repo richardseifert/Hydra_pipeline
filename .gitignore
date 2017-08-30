@@ -1,3 +1,5 @@
+nohup*
+*.sh
 *.pyc
 *.swp
 testing_*
