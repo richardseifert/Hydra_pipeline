@@ -7,8 +7,9 @@ from astropy.io import fits
 from spectra import rmean_spectra, scale_spectra
 
 class fibers:
-    def __init__(self, init_spectra={}):
+    def __init__(self, init_spectra={}, init_header=None):
         self.spectra = dict(init_spectra)
+        self.header = init_header
     def add_spectrum(self, fiber_num, spec):
         self.spectra[fiber_num] = spec
     def get_spectra(self, as_dict=False):
@@ -18,6 +19,8 @@ class fibers:
         return [self.spectra[fiber_num] for fiber_num in fiber_nums]
     def get_spectrum(self, fiber_num):
         return self.spectra[fiber_num]
+    def set_spectrum(self, fiber_num, spec):
+        self.spectra[fiber_num] = spec
     def scale_spectra(self):
         fiber_nums = sorted(self.spectra.keys())
         sp_list = [self.spectra[fnum] for fnum in fiber_nums]
@@ -32,30 +35,31 @@ class fibers:
         fiber_num = fiber_nums[i]
         self.spectra[fiber_num] = new_spec
         a = np.array(new_spec.get_flux())
-    def save(self, savepath):
-        #Generate header
-        spec_headers = filter(None, [spec.get_header() for spec in self.get_spectra()])
-        header = common_header(spec_headers)
-        if header == None:
-            header = fits.PrimaryHDU(np.array([])).header
+    def generate_header(self, headers):
+        self.header = common_header(headers)
+        if self.header == None:
+            self.header = fits.PrimaryHDU(np.array([])).header
         for i, fnum in enumerate(sorted(self.spectra.keys())):
             try:
-                apinfo = self.spectra[fnum].get_header()['SLFIB'+str(int(fnum))]
+                apid = self.header['SLFIB'+str(int(fnum))]
+                if len(apid.split(' ')) >= 6:
+                    apid = ' '.join(apid.split(' ')[4:])
             except TypeError:
-                apinfo = ''
-            header['APINFO'+str(int(i+1))] = apinfo
+                apid = ''
+            self.header['APID'+str(int(i+1))] = apid
 
+    def save(self, savepath):
         length = max([len(spec.get_flux()) for spec in self.get_spectra()])
         flux_dat = np.asarray([pad_array(spec.get_flux(), np.nan, length) for spec in self.get_spectra()], dtype='float64')
-        flux = fits.PrimaryHDU(flux_dat, header)
+        flux = fits.PrimaryHDU(flux_dat, self.header)
         flux.header['EXTNAME'] = 'FLUX'
 
         wavelength_dat = np.asarray([pad_array(spec.get_wavelength(), np.nan, length) for spec in self.get_spectra()])
-        wavelength = fits.ImageHDU(wavelength_dat, header)
+        wavelength = fits.ImageHDU(wavelength_dat, self.header)
         wavelength.header['EXTNAME'] = 'WAVELENGTH'
 
         flux_err_dat = np.asarray([pad_array(spec.get_flux_err(), np.nan, length) for spec in self.get_spectra()])
-        flux_err = fits.ImageHDU(flux_err_dat, header)
+        flux_err = fits.ImageHDU(flux_err_dat, self.header)
         flux_err.header['EXTNAME'] = 'FLUX_ERR'
 
         f = fits.HDUList([flux, wavelength, flux_err])
@@ -185,7 +189,7 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
 
     return res
 
-def robust_mean_extraction(images, fiber_mask, profile_map, wvlsol, use_fibers, plotter=None):
+def robust_mean_extraction(images, fiber_mask, profile_map, wvlsol, use_fibers):
     #Extract skyflat spectra from each frame and group by fiber number.
     comb_specs = {}
     for image in images:
@@ -195,21 +199,19 @@ def robust_mean_extraction(images, fiber_mask, profile_map, wvlsol, use_fibers, 
                 comb_specs[fnum] = []
             comb_specs[fnum].append(comb_fibers.get_spectrum(fnum))
 
-    #Normalize skyflat spectra to have same median. Then median combine all spectra of the same fiber.
+    #Normalize spectra to have same median. Then median combine all spectra of the same fiber.
     #median_counts = np.median([np.nanmedian(s.get_flux()) for sfs in comb_specs.values() for s in sfs])
     for fnum in comb_fibers.get_fiber_numbers():
-        if plotter!=None:
-            plotter.clear_plot()
         median_counts = np.median([np.nanmedian(sp.get_flux()) for sp in comb_specs[fnum]])
         comb_specs[fnum] = scale_spectra(comb_specs[fnum])
-        if plotter!=None:
-            for sp in comb_specs[fnum][:1]:
-                sp.plot(ax=plotter, color='gray', lw=1)
         comb_specs[fnum] = rmean_spectra(comb_specs[fnum])
-        if plotter!=None:
-            comb_specs[fnum].plot(ax=plotter, color='blue')
 
     #Make fibers object from robust mean combined spectra.
     comb_fibers = fibers(comb_specs) 
+    #try:
+    headers = [im[0].header for im in images]
+    comb_fibers.generate_header(headers)
+    #except:
+    #    print 'BROKE!!!'
 
     return comb_fibers

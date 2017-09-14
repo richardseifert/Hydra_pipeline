@@ -160,6 +160,30 @@ def get_common_header(*args):
     new_header = common_header(headers, template_header)
     return new_header
 
+def avg_sexagesimal(headers, card):
+    avg_decimal = 0.0
+    N = 0
+    for header in headers:
+        sexages = header[card]
+        try:
+            h,m,s = [float(n) for n in filter(None, sexages.split(':'))]
+        except:
+            continue
+        avg_decimal += h+m/60.+s/3600.
+        N += 1
+    if N == 0:
+        raise TypeError('Header card '+card+' has non-sexagesimal values.')
+    avg_decimal /= N
+
+    avg_h = np.floor(avg_decimal)
+    avg_decimal = (avg_decimal - avg_h)*60
+    avg_m = np.floor(avg_decimal)
+    avg_decimal = (avg_decimal - avg_m)*60
+    avg_s = round(avg_decimal, 3)
+
+    sexages_str = str(int(avg_h)).rjust(2,'0')+':'+str(int(avg_m)).rjust(2,'0')+':'+str(avg_s).split('.')[0].rjust(2,'0')+'.'+str(avg_s).split('.')[1].ljust(3,'0')
+    return sexages_str
+
 def middle_mjd(headers, card='MJD-OBS', exp_card='EXPTIME'):
     plus=all([h[card][0]=='+' for h in headers])
     mjd_list = [np.longdouble(h[card]) for h in headers]
@@ -187,7 +211,10 @@ def common_header(headers, template_header=None):
 
     #mjd_obs_comb = lambda headers: middle_mjd(headers,card='MJD-OBS')
     comb_funcs = {'MJD-OBS' : lambda headers : middle_mjd(headers,card='MJD-OBS'),
-                  'JD' : lambda headers : middle_mjd(headers,card='JD')}
+                  'JD' : lambda headers : middle_mjd(headers,card='JD'),
+                  'RA' : lambda headers: avg_sexagesimal(headers,card='RA'),
+                  'DEC' : lambda headers: avg_sexagesimal(headers,card='DEC'),
+                  'UT' : lambda headers: avg_sexagesimal(headers,card='UT')}
     sample_header = headers[0]
     for card in sample_header.keys():
         if card == 'COMMENT' or card == 'HISTORY':
