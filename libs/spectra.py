@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 from astropy.io import fits
 from fitstools import common_header
+from html_plot import plotter
 
 def unpack_xy(use_args='all', preserve=False):
     def decorator(f):
@@ -253,7 +254,9 @@ class spectrum(curve):
         flux_err.header['EXTNAME'] = 'FLUX_ERR'
         f = fits.HDUList([flux, wavelength, flux_err])
         f.writeto(savepath, clobber=True)
-    def plot(self, ax=None, **kwargs):
+    def plot(self, p=None, **kwargs):
+        '''
+        #Old matplotlib method.
         if ax == None:
             fig, ax = plt.subplots()
         ax.set_xlabel('Wavelength ($\AA$)')
@@ -262,6 +265,20 @@ class spectrum(curve):
         if type(self.yerr) != type(None):
             ax.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, facecolor='cornflowerblue', linewidth=0.0)
         return ax
+        '''
+        if p == None:
+            p = plotter()
+        p.set_xlabel('Wavelength (Ang)')
+        p.set_ylabel('Flux')
+        p.line(self.x, self.y, **kwargs)
+        if type(self.yerr) != type(None):
+            if 'line_color' in kwargs:
+                color = kwargs['line_color']
+            else:
+                color = 'blue'
+            p.fill_between(self.x, self.y-self.yerr, self.y+self.yerr, line_width=0.0, fill_color=color, line_color=color, fill_alpha=0.2, line_alpha=0.2)
+        return p
+
 def sum_spectra(spectra, header=None, **kwargs):
     if header==None:
         #Combine headers somehow

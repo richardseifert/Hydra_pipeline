@@ -2,7 +2,7 @@ import sys
 import libs.process as process
 from libs.ensure_path import ensure_path
 from libs.output import output_log
-from libs.plotter import plotter
+from libs.html_plot import plotter
 from libs.make_recipe import make_recipe
 try:
     import argh
