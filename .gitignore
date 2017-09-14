@@ -10,6 +10,8 @@ stuff/
 *.tar
 
 unittests
+calib/master_calib/old
+libs/test_html_plot
 
 recipes/*
 !recipes/.gitkeep
