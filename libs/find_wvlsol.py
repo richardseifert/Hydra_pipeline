@@ -24,6 +24,9 @@ class wvlsolver:
         self.plotter=plotter
         self.fibers = {}
 
+        #Load base template wavelength solution.
+        self.load_base_template()
+
         #Load thar line list info.
         master_calib = 'calib/master_calib'
         dat = np.loadtxt(master_calib+'/thar_short.fits')
@@ -41,43 +44,101 @@ class wvlsolver:
 
     def set_path(self, new_path):
         self.savepath = new_path
-        
 
-    def solve(self):
+    def load_base_template(self):
         #Load the template wavelength solution.
         master_calib = 'calib/master_calib'
         template_dat = np.loadtxt(master_calib+'/template_wvlsol.dat', delimiter=',')
         p = template_dat[:,2]
         w = template_dat[:,0]
         coeffs = fit_poly(p, w, 3)
-        template = lambda x, c=coeffs: polynomial(x, *c)
+        self.base_template = lambda x, c=coeffs: polynomial(x, *c)
+
+    def get_template(self, fnum, valid_fnums=None):
+        if valid_fnums == None:
+            valid_fnums = self.fnums
+        nearest_fnums = sorted(self.fnums, key=lambda n: abs(fnum-n))
+        for n in nearest_fnums:
+            if n in self.fibers.keys() and n in valid_fnums:
+                return self.fibers[n].get_solution()
+        return self.base_template
+
+
+
+    def remove_cosmics(self, tol=5):
+        pix = {fnum:self.fibers[fnum].get_pix() for fnum in self.fibers.keys()}
+        counts = {fnum:self.fibers[fnum].get_counts() for fnum in self.fibers.keys()}
+
+        #Shift fibers to be lined up with center fiber.
+        center_fnum = sorted(self.fibers.keys(), key=lambda fnum: abs(fnum-50))[0]
+        shifts = {}
+        for fnum in self.fibers.keys():
+            corr = np.correlate(counts[center_fnum],counts[fnum], 'full')
+            shifts[fnum] = np.arange(-len(pix[fnum])+1, len(pix[fnum])+1)[np.argmax(corr)]
         
-        def get_template(fnum):
-            nearest_fnums = sorted(self.fnums, key=lambda n: abs(fnum-n))
-            for n in nearest_fnums:
-                if n in self.fibers.keys() and n in good_fiber_wvlsols:
-                    return self.fibers[n].get_solution()
-            return template
+        master_pix = np.arange(min([min(shifts.values()),0]), len(counts[center_fnum])+max(shifts.values()))
+        length = len(master_pix)
+        min_pix = min(master_pix)
+        max_pix = max(master_pix)
+        for fnum in self.fibers.keys():
+            i = -min_pix+shifts[fnum]
+            full_pix = np.NAN * np.zeros_like(master_pix)
+            full_pix[i:i+len(pix[fnum])] = pix[fnum]
+            pix[fnum] = full_pix
+            full_counts = np.NAN * np.zeros_like(master_pix)
+            full_counts[i:i+len(counts[fnum])] = counts[fnum]
+            counts[fnum] = full_counts
+        count_medians = np.nanmedian(np.asarray(counts.values()), axis=0)
+        count_iqrs = np.subtract(*np.nanpercentile(np.asarray(counts.values()), [75, 25], axis=0))
 
-        #use_fibers_high = sorted([fnum for fnum in self.fnums if fnum >= 50])
-        #use_fibers_low = sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
+        self.plotter.clear()
+        self.plotter.set_ylabel('Counts')
+        self.plotter.set_xlabel('Pixels')
+        self.plotter.line(master_pix, count_medians, color='red')
+        for fnum in self.fibers.keys():
+            self.plotter.line(master_pix, counts[fnum])
+        self.plotter.fill_between(master_pix, count_medians-tol*count_iqrs, count_medians+tol*count_iqrs, fill_alpha=0.2, line_alpha=0.2)
+        self.plotter.save('cosmics_test.html')
 
+        for fnum in self.fibers.keys():
+            mask = np.logical_not(np.isnan(counts[fnum])) & (counts[fnum] > count_medians-tol*count_iqrs) & (counts[fnum] < count_medians+tol*count_iqrs)
+            counts[fnum] = counts[fnum][mask]
+            pix[fnum] = pix[fnum][mask]
+
+            print len(pix[fnum]), len(counts[fnum])
+            print
+
+            self.fibers[fnum].set_pix(pix[fnum])
+            self.fibers[fnum].set_counts(counts[fnum])
+
+    def solve(self):
         #The template solutions are generated using the central fiber, fnum = 50, so sort fnums
         # starting at 50, ascending to 99, then jumping to 49, and descending to 1.
         sorted_fnums = sorted([fnum for fnum in self.fnums if fnum >= 50]) + sorted([fnum for fnum in self.fnums if fnum < 50], key = lambda x: -x)
         #sorted_fnums = sorted([fnum for fnum in self.fnums if fnum <= 51], key = lambda x: -x)
+
+        #Extract ThAr spectrum for each fiber.
+        for fnum in self.fnums:
+            f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
+            f_pix = np.arange(len(f_counts), dtype=np.float64)
+            self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, self.linelist, fast=self.fast, plotter=self.plotter)
+
+        #Find and remove cosmic rays.
+        self.remove_cosmics()
+        exit()
 
         good_fiber_wvlsols = []
         bad_fiber_wvlsols = []
         for fnum in sorted_fnums:
             if self.output != None:
                 self.output.edit_message('Finding wavelength solution for fiber '+str(fnum))
-            f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
-            f_pix = np.arange(len(f_counts), dtype=np.float64)
-            self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, get_template(fnum), self.linelist, fast=self.fast, plotter=self.plotter)
+            #f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
+            #f_pix = np.arange(len(f_counts), dtype=np.float64)
+            #self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, self.linelist, self.get_template(fnum, good_fiber_wvlsols), fast=self.fast, plotter=self.plotter)
+            self.fibers[fnum].set_template(self.get_template(fnum, good_fiber_wvlsols))
             self.fibers[fnum].solve(polynomial_plotname='F'+str(fnum)+'_polynomial.pdf', wvlsol_plotname='F'+str(fnum)+'_wvlsol.pdf')
 
-            #Check how many peaks were used in the fit to help determine if it's good or not.
+            #Check how many peaks were used in the fit to determine if it's good or not.
             if len(self.fibers[fnum].peaks_pix) >= 26:
                 good_fiber_wvlsols.append(fnum)
             elif self.output != None:
@@ -94,6 +155,43 @@ class wvlsolver:
 
             if self.output != None:
                 self.output.edit_message('fiber '+str(fnum)+' wavelength solution found using '+str(len(self.fibers[fnum].peaks_pix))+' ThAr lines.')
+
+    def improve(self):
+        #Load the good and bad wavelength solutions from initial call to solve().
+        f = open(self.savepath)
+        lines = f.read().split('\n')
+        f.close()
+        good_fiber_wvlsols = [int(fnum) for fnum in filter(None, lines[0].split(','))]
+        bad_fiber_wvlsols = [int(fnum) for fnum in filter(None, lines[1].split(','))]
+
+        self.plotter.clear()
+        self.plotter.set_xlabel('Pixel')
+        self.plotter.set_ylabel('Counts')
+        for fnum in bad_fiber_wvlsols:
+            #Sort good fibers by their closeness to fnum.
+            sorted_good_fnums = sorted(good_fiber_wvlsols, key=lambda n: abs(n-fnum))
+            print fnum, sorted_good_fnums
+
+            f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
+            f_pix = np.arange(len(f_counts), dtype=np.float64)
+
+            self.plotter.clear()
+            self.plotter.line(*remove_cosmics(f_pix, f_counts), color='blue')
+            for gfnum in sorted_good_fnums:
+                gf_counts = extract_counts(self.comp, self.fmask, gfnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
+                gf_pix = np.arange(len(f_counts), dtype=np.float64)
+
+                corr = np.correlate(f_counts, gf_counts, 'full')
+                shift = np.arange(-len(f_pix)+1, len(f_pix)+1)[np.argmax(corr)]
+                self.plotter.line(*remove_cosmics(gf_pix+shift, gf_counts), color='red')
+            self.plotter.save('wvlsol_improve_F'+str(fnum)+'.html')
+            self.plotter.clear()
+            self.plotter.set_title('best value: '+str(shift))
+            self.plotter.set_ylabel('corr')
+            self.plotter.set_xlabel('offset')
+            self.plotter.line(np.arange(-len(f_pix)+1, len(f_pix)+1), corr)
+            self.plotter.save('corr_test.html')
+
 
 
     def get_wvlsol_map(self):
@@ -112,7 +210,7 @@ class wvlsolver:
         return {fnum:self.fibers[fnum].get_npeaks for fnum in self.fnums}
 
 class fiber_wvlsoler:
-    def __init__(self, pix, counts, template, linelist, fast=False, plotter=None):
+    def __init__(self, pix, counts, linelist, template=None, fast=False, plotter=None):
         self.pix = np.array(pix)
         self.counts = np.array(counts)
         self.linelist = linelist
@@ -125,6 +223,18 @@ class fiber_wvlsoler:
         dat = np.loadtxt(master_calib+'/thar_short.fits')
         self.linelist_wvl = dat[:,0]
         self.linelist_counts = dat[:,1]
+
+    def get_pix(self):
+        return self.pix
+    def get_counts(self):
+        return self.counts
+    def set_pix(self, new_pix):
+        self.pix = new_pix
+    def set_counts(self, new_counts):
+        self.counts = new_counts
+
+    def set_template(self, new_template):
+        self.template = new_template
 
     def solve(self, npeaks=70, **kwargs):
         #Remove strong cosmic rays.
@@ -187,7 +297,7 @@ class fiber_wvlsoler:
             n += 1
 
         #print 'FINAL USING '+str(len(self.peaks_pix))+' PEAKS'
-        self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd), **kwargs)
+        #self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd), **kwargs)
         self.wsol = lambda x, c=self.wsol_coeffs: polynomial(x, *c)
 
     def plot_solution(self, peaks_pix=None, peaks_wvl=None, counts=None, wsol=None, polynomial_plotname='polynomial.pdf', wvlsol_plotname='wvlsol.pdf', **kwargs):
