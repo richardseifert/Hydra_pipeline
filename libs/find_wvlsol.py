@@ -105,8 +105,6 @@ class wvlsolver:
             counts[fnum] = counts[fnum][mask]
             pix[fnum] = pix[fnum][mask]
 
-            print len(pix[fnum]), len(counts[fnum])
-            print
 
             self.fibers[fnum].set_pix(pix[fnum])
             self.fibers[fnum].set_counts(counts[fnum])
@@ -125,7 +123,6 @@ class wvlsolver:
 
         #Find and remove cosmic rays.
         self.remove_cosmics()
-        exit()
 
         good_fiber_wvlsols = []
         bad_fiber_wvlsols = []
@@ -136,7 +133,7 @@ class wvlsolver:
             #f_pix = np.arange(len(f_counts), dtype=np.float64)
             #self.fibers[fnum] = fiber_wvlsoler(f_pix, f_counts, self.linelist, self.get_template(fnum, good_fiber_wvlsols), fast=self.fast, plotter=self.plotter)
             self.fibers[fnum].set_template(self.get_template(fnum, good_fiber_wvlsols))
-            self.fibers[fnum].solve(polynomial_plotname='F'+str(fnum)+'_polynomial.pdf', wvlsol_plotname='F'+str(fnum)+'_wvlsol.pdf')
+            self.fibers[fnum].solve(polynomial_plotname='F'+str(fnum)+'_polynomial.html', wvlsol_plotname='F'+str(fnum)+'_wvlsol.html')
 
             #Check how many peaks were used in the fit to determine if it's good or not.
             if len(self.fibers[fnum].peaks_pix) >= 26:
@@ -170,7 +167,6 @@ class wvlsolver:
         for fnum in bad_fiber_wvlsols:
             #Sort good fibers by their closeness to fnum.
             sorted_good_fnums = sorted(good_fiber_wvlsols, key=lambda n: abs(n-fnum))
-            print fnum, sorted_good_fnums
 
             f_counts = extract_counts(self.comp, self.fmask, fnum)  #WANT TO REPLACE WITH OPTIMAL EXTRACTION SOMEHOW
             f_pix = np.arange(len(f_counts), dtype=np.float64)
@@ -238,8 +234,8 @@ class fiber_wvlsoler:
 
     def solve(self, npeaks=70, **kwargs):
         #Remove strong cosmic rays.
-        l = len(self.pix)
-        self.pix, self.counts = remove_cosmics(self.pix, self.counts)
+        #l = len(self.pix)
+        #self.pix, self.counts = remove_cosmics(self.pix, self.counts)
         #print l-len(self.pix), 'COSMIC RAY POINTS FOUND AND REMOVED.'
 
         #Find peaks in the fiber.
@@ -297,7 +293,7 @@ class fiber_wvlsoler:
             n += 1
 
         #print 'FINAL USING '+str(len(self.peaks_pix))+' PEAKS'
-        #self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd), **kwargs)
+        self.plot_solution(title=str(len(self.peaks_pix))+' peaks, '+str(self.rsqrd), **kwargs)
         self.wsol = lambda x, c=self.wsol_coeffs: polynomial(x, *c)
 
     def plot_solution(self, peaks_pix=None, peaks_wvl=None, counts=None, wsol=None, polynomial_plotname='polynomial.pdf', wvlsol_plotname='wvlsol.pdf', **kwargs):
@@ -313,26 +309,31 @@ class fiber_wvlsoler:
         w = wsol(p)
 
         #Generate plot of polynomial fit.
-        self.plotter.clear_plot(figsize=(32,24))
+        self.plotter.clear()
         if 'title' in kwargs:
             self.plotter.set_title(kwargs['title'])
         self.plotter.scatter(peaks_pix, peaks_wvl, color='blue')
-        self.plotter.plot(p, w, color='red')
+        self.plotter.line(p, w, color='red')
         self.plotter.save(polynomial_plotname)
 
         #Generate plot of wavelength solution.
         wvl = wsol(self.pix)
-        self.plotter.clear_plot(figsize=(32,24))
+        self.plotter.clear()
         if 'title' in kwargs:
             self.plotter.set_title(kwargs['title'])
-        self.plotter.plot(self.linelist_wvl, self.linelist_counts, color='red')
-        counts_scale=max(self.linelist_counts)/max(self.counts)
-        self.plotter.plot(wvl, self.counts*counts_scale, color='blue')
+        counts_scale=np.max((self.counts))/np.max((self.linelist_counts))
+        self.plotter.line(wvl, self.counts, color='blue')
+        self.plotter.line(self.linelist_wvl, counts_scale*self.linelist_counts, color='red')
+        print max(counts_scale*self.linelist_counts), max(self.counts)
+        h1 = 1.05*max([max(counts_scale*self.linelist_counts), max(self.counts)])
+        h2 = 1.05*h1
         for pw in peaks_wvl:
-            self.plotter.axvline(x=pw, color='salmon')
+            #print pw, h1, h2
+            self.plotter.line([pw, pw], [h1, h2], color='red')
+        #print
         for pp in peaks_pix:
-            self.plotter.axvline(x=wsol(pp),color='cornflowerblue')
-            self.plotter.scatter(wsol(pp), counts[int(pp)]*counts_scale, color='black')
+            #print wsol(pp), h1, h2
+            self.plotter.line([wsol(pp), wsol(pp)], [h1, h2], color='blue')
         self.plotter.save(wvlsol_plotname)
 
 

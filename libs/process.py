@@ -56,21 +56,16 @@ class processor(object):
 		
 	def load_calib_products(self, pnum):
 		for product in self.cp_fnames.keys():
-			#print 'ATTEMPTING TO LOAD '+product
 			fpath = None
 			if os.path.exists(self.calib_dirs[pnum]+'/'+self.cp_fnames[product]):
 				fpath = self.calib_dirs[pnum]+'/'+self.cp_fnames[product]
-				#print 'FOUND '+product+' IN GROUP CALIB DIRECTORY'
 			elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
 				fpath = self.calib+'/'+self.cp_fnames[product]
-				#print 'FOUND '+product+' IN GENERAL CALIB DIRECTORY'
 			if fpath != None:
 				f = fits.open(fpath)
 				if product != 'master_sky_spec':
-					#print 'LOADING '+product+' AS 2D ARRAY'
 					d = f[0].data
 				else:
-					#print 'LOADING '+product+' AS SPECTRUM'
 					d = spectrum(f[1].data, f[0].data, f[2].data)
 				f.close()
 				setattr(self, product, d)
