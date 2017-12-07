@@ -233,11 +233,6 @@ class fiber_wvlsoler:
         self.template = new_template
 
     def solve(self, npeaks=70, **kwargs):
-        #Remove strong cosmic rays.
-        #l = len(self.pix)
-        #self.pix, self.counts = remove_cosmics(self.pix, self.counts)
-        #print l-len(self.pix), 'COSMIC RAY POINTS FOUND AND REMOVED.'
-
         #Find peaks in the fiber.
         std, self.pix_peaks_all, self.pix_counts_all = fit_ngaussian(self.pix, self.counts, npeaks, fast=self.fast)
 
@@ -245,7 +240,6 @@ class fiber_wvlsoler:
         typical_counts = np.median(self.pix_counts_all)
         heights = [-abs(c - typical_counts) for c in self.pix_counts_all]
         self.pix_peaks_all = np.asarray(self.pix_peaks_all)[np.argsort(heights)]
-        #print [p for p in self.pix_peaks_all if p > len(self.pix)]
 
         #Find 5 good peaks for the initial wvlsol
         template_wvlsol = self.template

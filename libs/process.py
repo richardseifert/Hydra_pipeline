@@ -97,6 +97,31 @@ class processor(object):
 				mb = fits.open(mb_path)
 				self.master_bias = mb[0].data
 				mb.close()
+                        elif len(self.get_recipes(rtype='zero')) == 0:
+                            #Load the super master bias, since no bias recipes were given.
+                            
+                            #Determine the readtime by looking at a sample target frame.
+                            sample_fits = fits.open( self.indata+'/'+(fname for r in self.get_recipes(rtype='flat') for fname in r.filenames).next() )
+
+                            readtime = sample_fits[0].header['READTIME']
+                            sample_fits.close()
+
+                            #Load the appropriate master bias.
+                            if readtime == 34:
+				mb = fits.open('calib/master_calib/master_bias34.fits')
+				self.master_bias = mb[0].data
+				mb.close()
+                            elif readtime == 45:
+				mb = fits.open('calib/master_calib/master_bias45.fits')
+				self.master_bias = mb[0].data
+				mb.close()
+                            elif readtime == 67:
+				mb = fits.open('calib/master_calib/master_bias67.fits')
+				self.master_bias = mb[0].data
+				mb.close()
+                            else:
+                                raise OSError("Unable to find master bias with a readtime of "+str(readtime)+".")
+                                
 			else:
 				self.make_master_bias()
 			return self.master_bias
@@ -187,7 +212,7 @@ class process_thar(processor):
                         self.output('Wavelength solution derived from '+fname+' saved at '+ws_path)
 
                     #Save summary of wavelength solutions
-                    f = open(self.calib_dirs[r.pnum]+'/wvlsol_summary.dat')
+                    f = open(self.calib_dirs[r.pnum]+'/wvlsol_summary.dat', 'w')
                     for fnum in sorted(summary.keys(), key=lambda n: int(n)):
                         f.write(','.join([str(n) for n in ([fnum]+summary[fnum])])+'\n')
                     f.close()
@@ -227,7 +252,7 @@ class process_skyflat(processor):
             skyflat_fibers.save(self.calib_dirs[r.pnum]+'/skyflat_spec.fits')
             for sp in skyflat_fibers.get_spectra():
                 self.plotter.clear_plot()
-                sp.plot(ax=self.plotter)
+                sp.plot(p=self.plotter)
 
 
 
@@ -269,12 +294,12 @@ class process_sky(processor):
                 sky_fibers = robust_mean_extraction(sky_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
                 #sky_fibers.scale_spectra()
                 for sp in sky_fibers.get_spectra():
-                    sp.plot(ax=self.plotter, color='gray')
+                    sp.plot(p=self.plotter, color='gray')
 
                 #Make master sky spectrum, save to calib directory
                 self.output('Producing master sky spectrum')
                 master_sky_spec = median_spectra(sky_fibers.get_spectra())
-                master_sky_spec.plot(ax=self.plotter)
+                master_sky_spec.plot(p=self.plotter)
                 self.plotter.save('master_sky.pdf')
                 mss_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['master_sky_spec']
                 master_sky_spec.save(mss_path)

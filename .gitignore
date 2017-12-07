@@ -23,3 +23,5 @@ calib/*
 !calib/master_calib
 outdata/*
 !outdata/.gitkeep
+
+libs/old
