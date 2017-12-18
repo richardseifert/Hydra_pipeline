@@ -41,7 +41,7 @@ class fibers:
             self.header = fits.PrimaryHDU(np.array([])).header
         for i, fnum in enumerate(sorted(self.spectra.keys())):
             try:
-                apid = self.header['SLFIB'+str(int(fnum))]
+                apid = 'SLFIB'+str(int(fnum))+", "+self.header['SLFIB'+str(int(fnum))]
                 if len(apid.split(' ')) >= 6:
                     apid = ' '.join(apid.split(' ')[4:])
             except TypeError:
