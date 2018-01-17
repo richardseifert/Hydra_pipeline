@@ -11,27 +11,26 @@ def ensure_path(path):
     RETURNS:
         path - String, the same path given. Now, the directory at the given path
                exists, if it didn't already.
+    ex.)
+        my_path = ensure_path("I/need/this/path")
+        # Now my_path exists.
+        assert my_path == "I/need/this/path"
+        assert os.path.exists(my_path)
     '''
 
     #Do nothing if the path already exists.
     if os.path.exists(path):
         return path
 
-    slash_indxs = [indx for indx,char in enumerate(path) if char=="/"]
-    dirs_to_make = []
-    for indx in reversed(slash_indxs):
-        rmv = path[indx:].split("/")[1]
-        tmp_path = path[0:indx]+"/"
-        dirs_to_make.insert(0,tmp_path+rmv)
-        if os.path.exists(tmp_path):
-            found = True
-            break
-    if not found:
-        raise ValueError("The path "+path+" cannot be created.")
-    for dirname in dirs_to_make:
-    	try:
-        	os.makedirs(dirname)
-        except OSError:
-        	pass #Directory already exists.
-    return path
+    #Precondition path
+    if path[-1] != "/":
+        path += "/"
 
+    #Go through each subdirectory and create it if it doesn't exist.
+    direcs = [path[:i+1] for i,c in enumerate(path) if c=="/"]
+    for direc in direcs:
+        print direc
+        if not os.path.exists(direc):
+            print "MAKING"
+            os.makedirs(direc)
+    return path
