@@ -29,8 +29,6 @@ def ensure_path(path):
     #Go through each subdirectory and create it if it doesn't exist.
     direcs = [path[:i+1] for i,c in enumerate(path) if c=="/"]
     for direc in direcs:
-        print direc
         if not os.path.exists(direc):
-            print "MAKING"
             os.makedirs(direc)
     return path
