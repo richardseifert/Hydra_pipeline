@@ -1,11 +1,22 @@
 import os
 
-#This function checks if a path to a directory exists. If the path does not
-#   exist, then it makes all of the necessary directories for the path to exist.
-#This function is used by order_spec objects when saving.
 def ensure_path(path):
+    '''
+    This function checks if a path to a directory exists. If the path exists, this 
+    function does nothing but return the given path. If the path does not exist, 
+    then it makes all of the necessary directories for the path to exist.
+
+    ARGUMENTS:
+        path - String of a path to a directory.
+    RETURNS:
+        path - String, the same path given. Now, the directory at the given path
+               exists, if it didn't already.
+    '''
+
+    #Do nothing if the path already exists.
     if os.path.exists(path):
         return path
+
     slash_indxs = [indx for indx,char in enumerate(path) if char=="/"]
     dirs_to_make = []
     for indx in reversed(slash_indxs):
@@ -16,8 +27,7 @@ def ensure_path(path):
             found = True
             break
     if not found:
-        print "Path does not exist."
-        return path
+        raise ValueError("The path "+path+" cannot be created.")
     for dirname in dirs_to_make:
     	try:
         	os.makedirs(dirname)
