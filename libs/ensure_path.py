@@ -13,7 +13,7 @@ def ensure_path(path):
                exists, if it didn't already.
     ex.)
         my_path = ensure_path("I/need/this/path")
-        # Now my_path exists.
+        # Now the directory I/need/this/path exists.
         assert my_path == "I/need/this/path"
         assert os.path.exists(my_path)
     '''
