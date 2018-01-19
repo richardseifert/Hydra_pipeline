@@ -3,7 +3,7 @@ import bokeh.plotting as bpl
 
 class plotter:
     '''
-    This class is meant to emulate a matplotlib.pyplot.figure object, but with
+    This object is meant to emulate a matplotlib.pyplot.figure object, but with
      the bokeh html plotting library.
     '''
     def __init__(self, rootpath=None):
@@ -32,6 +32,24 @@ class plotter:
             self.fig = bpl.figure(webgl=True, sizing_mode='stretch_both')
         except:
             self.fig = bpl.figure(sizing_mode='stretch_both')
+    def __getattr__(self, attr):
+        '''
+        __getattr__ is set up so that standard bokeh.plotting.figure methods
+         can be called naturally without having individual methods for each.
+        ex.)
+            ...
+            my_plotter = plotter()
+            my_plotter.line(x_points, y_points)             #Plot a line.
+            my_plotter.circle(x_points, y_points, radius=5) #Plot a scatter plot.
+            ...
+        Common plotting functions can be found at
+         https://bokeh.pydata.org/en/latest/docs/reference/plotting.html.
+        ''' 
+        try:
+            exec('method = self.fig.'+attr)
+        except AttributeError:
+            raise AttributeError("plotter object has no attribute \""+attr+"\"")
+        return method
     def set_title(self, title):
         '''
         Set the plot title
@@ -80,21 +98,6 @@ class plotter:
         patch_x = np.append(np.array(x), np.array(x)[::-1])
         patch_y = np.append(np.array(y1), np.array(y2)[::-1])
         self.fig.patch(patch_x, patch_y, **kwargs)
-    def __getattr__(self, attr):
-        '''
-        __getattr__ is set up so that standard bokeh.plotting.figure methods
-         can be called naturally without having individual methods for each.
-        ex.)
-            ...
-            my_plotter = plotter()
-            my_plotter.line(x_points, y_points)             #Plot a line.
-            my_plotter.circle(x_points, y_points, radius=5) #Plot a scatter plot.
-            ...
-        Common plotting functions can be found at
-         https://bokeh.pydata.org/en/latest/docs/reference/plotting.html.
-        ''' 
-        exec('method = self.fig.'+attr)
-        return method
     def show(self):
         '''
         Opens current plot in default web browser.
