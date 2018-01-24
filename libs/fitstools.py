@@ -9,6 +9,21 @@ plt.ion()
 
 
 class manage_dtype:
+    '''
+    Decorator to handle all the various different ways of representing a fits file.
+    This decorator examines arguments of a function and converts any fits-like objects
+    into a common datatype.
+
+    ARGUMENTS:
+        use_args - list of indices of the arguments to be examined and converted. By default,
+                   all arguments are used.
+                   ex.) @manage_dtype(use_args=[0,2])
+                        def f(arg1, arg2, arg3):
+                            #Function body
+                        #arg1 and arg3 will be examined and if they are found to be fits-like,
+                        # they will be converted to 2D arrays. But arg2, is not examined or
+                        # converted.
+    '''
     dtypes = [lambda data,header=None: fits.HDUList(fits.PrimaryHDU(data,header)),
               lambda data,header=None: fits.PrimaryHDU(data,header),
               lambda data,header=None: data]
@@ -123,71 +138,6 @@ class manage_dtype:
                 res = self.convert_output(res)
             return res
         return wrapper
-'''
-def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=False):
-    #Decorator to handle all the various different ways of representing a fits file.
-    #This decorator examines arguments of a function and converts any fits-like objects
-    #into a common datatype.
-
-    #ARGUMENTS:
-    #    use_args - list of indices of the arguments to be examined and converted. By default,
-    #               all arguments are used.
-    #               ex.) @manage_dtype(use_args=[0,2])
-    #                    def f(arg1, arg2, arg3):
-    #                        #Function body
-    #                    #arg1 and arg3 will be examined and if they are found to be fits-like,
-    #                    # they will be converted to 2D arrays. But arg2, is not examined or
-    #                    # converted.
-    dtypes = [lambda data,header=None: fits.HDUList(fits.PrimaryHDU(data,header)),
-              lambda data,header=None: fits.PrimaryHDU(data,header),
-              lambda data: data]
-    def decorator(f):
-        def wrapper(use_args, *args, **kwargs):
-            args = list(args)
-            if use_args == 'all':
-                use_args = [i for i in range(len(args))]
-            dtype_i = 2
-            for i in use_args:
-                d, data, header, wcs = get_data_and_header(args[i])
-                if d < dtype_i:
-                    dtype_i = d
-                args[i] = [data]
-                if with_header==True or (isinstance(with_header, (list, tuple)) and i in with_header):
-                    args[i].append(header)
-                if with_wcs==True or (isinstance(with_wcs, (list, tuple)) and i in with_wcs):
-                    args[i].append(wcs)
-                if len(args[i])==1:
-                    args[i] = data
-
-            dtype = dtypes[dtype_i]
-
-            res = f(*args, **kwargs)
-            if preserve:
-                if type(res) == list:
-                    for i, r in enumerate(res):
-                        try:
-                            if len(r) == 2:
-                        	    r,header = r
-                            else:
-                        	    header=None
-                            if len(r.shape) == 2:
-                                res[i] = dtype(r,header)
-                        except TypeError,AttributeError:
-                            pass
-                else:
-                    try:
-                    	if len(res) == 2:
-                    	    res,header = res
-                    	else:
-                    	    header = None
-                        if len(res.shape) == 2:
-                            res = dtype(res,header)
-                    except TypeError,AttributeError:
-                        pass
-            return res
-        return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
-    return decorator
-'''
 
 @manage_dtype()
 def display(some_fits, ax=None):

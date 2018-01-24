@@ -1,4 +1,7 @@
 import unittest
+import numpy as np
+from astropy.io import fits
+from astropy.wcs import WCS
 import os
 
 from ensure_path import ensure_path
@@ -157,6 +160,103 @@ class test_plotter(unittest.TestCase):
                    "text", "triangle", "vbar", "wedge", "x"]
         for m in methods:
             exec("self.p."+m)
+
+from fitstools import manage_dtype
+class test_fitstools(unittest.TestCase):
+    def setUp(self):
+        #Make test 2D array.
+        self.arr1 = np.random.rand(10,10)
+
+        #Make test fits.header.
+        self.header1 = fits.ImageHDU(self.arr1.copy()).header
+
+        #Make test wcs.WCS.
+        self.wcs1 = WCS(self.header1)
+
+        #Make test fits.PrimaryHDU.
+        self.phdu1 = fits.PrimaryHDU(self.arr1.copy(), self.header1.copy())
+
+        #Make test fits.HDUList. 
+        self.hdulist1 = fits.HDUList(self.phdu1.copy())
+
+    def test_conversion_to_ndarray(self):
+        @manage_dtype()
+        def func(a):
+            self.assertTrue(isinstance(a, np.ndarray))
+        func(self.arr1)
+        func(self.phdu1)
+        func(self.hdulist1)
+
+    def test_use_args(self):
+        @manage_dtype(use_args=[0,2])
+        def func(a, b, c):
+            self.assertTrue(isinstance(a, np.ndarray))
+            self.assertTrue(isinstance(c, np.ndarray))
+            self.assertTrue(isinstance(b, fits.PrimaryHDU))
+        func(self.arr1, self.phdu1, self.hdulist1)
+
+    def test_with_header(self):
+        @manage_dtype(with_header=True)
+        def func(a):
+            self.assertTrue(len(a)==2)
+            self.assertTrue(a[1] == None or type(a[1]) == type(self.header1))
+        func(self.arr1)
+        func(self.phdu1)
+        func(self.hdulist1)
+    def test_with_wcs(self):
+        @manage_dtype(with_wcs=True)
+        def func(a):
+            self.assertTrue(len(a)==2)
+            self.assertTrue(a[1] == None or type(a[1]) == type(self.wcs1))
+        func(self.arr1)
+        func(self.phdu1)
+        func(self.hdulist1)
+    def test_with_head_and_wcs(self):
+        @manage_dtype(with_header=True, with_wcs=True)
+        def func(a):
+            self.assertTrue(len(a)==3)
+            self.assertTrue(a[1] == None or type(a[1]) == type(self.header1))
+            self.assertTrue(a[2] == None or type(a[2]) == type(self.wcs1))
+        func(self.arr1)
+        func(self.phdu1)
+        func(self.hdulist1)
+
+    def test_preserve1(self):
+        @manage_dtype(preserve=True)
+        def func(a):
+            return a.copy()
+        res = func(self.arr1)
+        self.assertTrue(isinstance(res, np.ndarray))
+
+        res = func(self.phdu1)
+        self.assertTrue(isinstance(res, fits.PrimaryHDU))
+
+        res = func(self.hdulist1)
+        self.assertTrue(isinstance(res, fits.HDUList))
+
+    def test_preserve2(self):
+        @manage_dtype(preserve=True)
+        def func(*args):
+            return self.arr1
+        res = func(self.arr1, self.phdu1)
+        self.assertTrue(isinstance(res, fits.PrimaryHDU))
+
+        res = func(self.arr1, self.hdulist1)
+        self.assertTrue(isinstance(res, fits.HDUList))
+
+        res = func(self.phdu1, self.hdulist1)
+        self.assertTrue(isinstance(res, fits.HDUList))
+
+        res = func(self.arr1, self.phdu1, self.hdulist1)
+        self.assertTrue(isinstance(res, fits.HDUList))
+
+    def test_nonfits1(self):
+        @manage_dtype()
+        def func(a):
+            return a
+        s = "I'm a string."
+        self.assertTrue(type(func(s)) == str)
+
 
 if __name__ == "__main__":
     unittest.main()
