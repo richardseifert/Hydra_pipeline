@@ -1,72 +1,143 @@
+'''
+This file contains a bunch of useful functions for handling fits files in python.
+'''
 import numpy as np
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 plt.ion()
 
-def get_data_and_header(some_fits):
-    if type(some_fits) == str:
-        dtype = 0
-        image = fits.open(some_fits)
-        image_data = image[0].data
-        image_header = image[0].header
-    if type(some_fits) == fits.hdu.hdulist.HDUList:
-        dtype = 0
-        image_data = some_fits[0].data
-        image_header = some_fits[0].header
-    elif type(some_fits) == fits.hdu.image.PrimaryHDU:
-        dtype = 1
-        image_data = some_fits.data
-        image_header = some_fits.header
-    else:
-        dtype = 2
-        image_data = some_fits
-        image_header = None
-        try:
-            if (image_data.shape) == 2:
-                image_header = fits.PrimaryHDU(image_data).header
-        except AttributeError:
-            pass
 
-    image_wcs = None
-    try:
-        image_wcs = wcs.WCS(image_header)
-    except:
-        pass
+class manage_dtype:
+    dtypes = [lambda data,header=None: fits.HDUList(fits.PrimaryHDU(data,header)),
+              lambda data,header=None: fits.PrimaryHDU(data,header),
+              lambda data,header=None: data]
+    def __init__(self, use_args='all', preserve=False, with_header=False, with_wcs=False):
+        self.use_args = use_args
 
-    return [dtype, image_data, image_header, image_wcs]
+        self.preserve=preserve
+        self.with_header = with_header
+        self.with_wcs = with_wcs
+    
+    def get_data_and_header(self, some_fits):
+        '''
+        Take a variety of possible FITS-related inputs and return a 2D data array,
+         a FITS header, a WCS object, and an indicator of the input data type.
+        ARGUMENTS:
+            some_fits - Some object that is represents a FITS image. It can be a
+                        string path to a .fits file, a preloaded astropy.io.fits
+                        HDUList or PrimaryHDU, or a numpy 2D array.
+        RETURNS:
+            tuple containing:
+                dtype - an int designating what type of data some_fits was.
+                image_data - numpy 2D array of the FITS data.
+                image_header - astropy.io.fits header object, if available. Otherwise None.
+                image_wcs - astropy.wcs WCS object, if available. Otherwise None.
 
-def get_dtype(*list_of_fits, **kwargs):
-    lowest=True
-    if 'lowest' in kwargs:
-        lowest=kwargs['lowest']
-    dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
-              lambda data: fits.PrimaryHDU(data),
-              lambda data: data]
-    dtype_i = 0 if lowest else 2
-    for some_fits in list_of_fits:
+        This is really a helper function for the manage_dtype decorator. So it probably
+        shouldn't be used directly by anything else.
+        '''
         if type(some_fits) == str:
             dtype = 0
+            image = fits.open(some_fits)
+            image_data = image[0].data
+            image_header = image[0].header
         if type(some_fits) == fits.hdu.hdulist.HDUList:
             dtype = 0
+            image_data = some_fits[0].data
+            image_header = some_fits[0].header
         elif type(some_fits) == fits.hdu.image.PrimaryHDU:
             dtype = 1
+            image_data = some_fits.data
+            image_header = some_fits.header
         else:
             dtype = 2
             image_data = some_fits
+            image_header = None
             try:
-                assert len(np.array(image_data).shape) == 2 \
-                       or len([dim for dim in np.array(image_data).shape if dim != 1]) == 2
-            except:
-                print np.array(image_data).shape, len(np.array(image_data).shape) == 2
-                raise ValueError('Got an object that is not fits-like')
-        if lowest:
-            dtype_i = min([dtype_i, dtype])
-        else:
-            dtype_i = max([dtype_i, dtype])
-    return dtypes[dtype_i]
+                if (image_data.shape) == 2:
+                    image_header = fits.PrimaryHDU(image_data).header
+            except AttributeError:
+                pass
 
+        image_wcs = None
+        try:
+            image_wcs = wcs.WCS(image_header)
+        except:
+            pass
+
+        return [dtype, image_data, image_header, image_wcs]
+
+    def expand_args(self, args):
+        #Determine arguments to expand.
+        if self.use_args == 'all':
+            use_args = [i for i in range(len(args))]
+        else:
+            use_args = self.use_args
+
+        #For each fits-like argument, expand it into [data, header, wcs].
+        new_args = list(args)
+        dtype_i = 2 #Move
+        for i in use_args:
+            new_args[i] = []
+            d, data, header, wcs = self.get_data_and_header(args[i])
+            if d < dtype_i:  #Move
+                dtype_i = d  #Move
+            new_args[i].append(data)
+            get_header = self.with_header or (isinstance(self.with_header,(list,tuple)) and i in self.with_header)
+            get_wcs = self.with_wcs or (isinstance(self.with_wcs,(list,tuple)) and i in self.with_wcs)
+            if get_header:
+                new_args[i].append(header)
+            if get_wcs:
+                new_args[i].append(wcs)
+            if len(new_args[i])==1:
+                new_args[i] = data
+
+        self.dtype = self.dtypes[dtype_i]  #Move
+        return new_args
+    def convert_one(self, r):
+        #Check if output takes the form, data or [data, header].
+        try:
+            if len(r) == 2:
+                r,header = r
+            else:
+                header=None
+            if len(r.shape) == 2:
+                r = self.dtype(r,header)
+        except TypeError,AttributeError:
+            pass
+        return r
+    def convert_output(self, res):
+        if type(res) == list:
+            for i, r in enumerate(res):
+                res[i] = self.convert_one(r)
+        else:
+            res = self.convert_one(res)
+        return res
+    
+    def __call__(self, f):
+        def wrapper(*args, **kwargs):
+            args = self.expand_args(args)
+            res = f(*args, **kwargs)
+            if self.preserve:
+                res = self.convert_output(res)
+            return res
+        return wrapper
+'''
 def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=False):
+    #Decorator to handle all the various different ways of representing a fits file.
+    #This decorator examines arguments of a function and converts any fits-like objects
+    #into a common datatype.
+
+    #ARGUMENTS:
+    #    use_args - list of indices of the arguments to be examined and converted. By default,
+    #               all arguments are used.
+    #               ex.) @manage_dtype(use_args=[0,2])
+    #                    def f(arg1, arg2, arg3):
+    #                        #Function body
+    #                    #arg1 and arg3 will be examined and if they are found to be fits-like,
+    #                    # they will be converted to 2D arrays. But arg2, is not examined or
+    #                    # converted.
     dtypes = [lambda data,header=None: fits.HDUList(fits.PrimaryHDU(data,header)),
               lambda data,header=None: fits.PrimaryHDU(data,header),
               lambda data: data]
@@ -116,6 +187,7 @@ def manage_dtype(use_args='all', preserve=False, with_header=False, with_wcs=Fal
             return res
         return lambda *args, **kwargs: wrapper(use_args, *args, **kwargs)
     return decorator
+'''
 
 @manage_dtype()
 def display(some_fits, ax=None):
@@ -247,6 +319,54 @@ def assign_header(some_fits, header):
     else:
         raise TypeError(str(some_fits) + 'is not an appropriate object for fits header assignment.')
 
+def get_dtype(*list_of_fits, **kwargs):
+    '''
+    Helper function for the combine function. It is used to determine the return type for
+     combined fits files.
+    ARGUMENTS:
+        *list_of_fits - fits-like objects. These can be string paths to a fits file, astropy.io.fits
+                        HDUList or PrimaryHDU objects, or ordinary 2D arrays.
+        preserve - Boolean that dictates how the dtype will be determined. preserve=True means the
+                   more complex dtypes will be favored, preserve=False means the less complex dtypes
+                   will be favored.
+    '''
+    #Handle optional argument 'preserve'.
+    preserve=False
+    if "preserve" in kwargs:
+        preserve = kwargs["preserve"]
+
+    #Define functions that convert 2D arrays into various forms of FITS datastructures,
+    # ordered from most complex to least.
+    dtypes = [lambda data: fits.HDUList(fits.PrimaryHDU(data)),
+              lambda data: fits.PrimaryHDU(data),
+              lambda data: data]
+
+    #Go through each fits object, determine what data type it is, and update the current
+    # dtype to use, based on the value of 'preserve'.
+    dtype_i = 0 if preserve else 2
+    for some_fits in list_of_fits:
+        if type(some_fits) == str:
+            dtype = 0
+        if type(some_fits) == fits.hdu.hdulist.HDUList:
+            dtype = 0
+        elif type(some_fits) == fits.hdu.image.PrimaryHDU:
+            dtype = 1
+        else:
+            dtype = 2
+            image_data = some_fits
+            try:
+                assert len(np.array(image_data).shape) == 2 \
+                       or len([dim for dim in np.array(image_data).shape if dim != 1]) == 2
+            except:
+                print np.array(image_data).shape, len(np.array(image_data).shape) == 2
+                raise ValueError('Got an object that is not fits-like')
+        if preserve:
+            dtype_i = min([dtype_i, dtype])
+        else:
+            dtype_i = max([dtype_i, dtype])
+
+    return dtypes[dtype_i]
+
 def combine(*args, **kwargs):
     comb_fits = combine_helper(*args, **kwargs)
     list_of_fits = args
@@ -296,16 +416,3 @@ def mask_fits(some_fits, some_mask, maskval=1, fillval=0, reshape=False):
         width = masked.size/height
         masked = masked.reshape((height, len(masked)/height))
     return masked
-
-'''
-#Takes too long to go manually through each pixel.
-def mask_fits_reshape(some_fits, some_mask, maskval=1):
-    result = []
-    for row in range(len(some_mask)):
-        result.append([])
-        for column in range(len(some_mask[row])):
-            if some_mask[row][column] == maskval:
-                result[row].append(some_fits[row][column])
-    result = np.asarray(result)
-    return result
-'''
