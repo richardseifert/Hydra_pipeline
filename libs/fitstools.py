@@ -99,8 +99,8 @@ class manage_dtype:
             if d < dtype_i:  #Move
                 dtype_i = d  #Move
             new_args[i].append(data)
-            get_header = self.with_header or (isinstance(self.with_header,(list,tuple)) and i in self.with_header)
-            get_wcs = self.with_wcs or (isinstance(self.with_wcs,(list,tuple)) and i in self.with_wcs)
+            get_header = self.with_header==True or (isinstance(self.with_header,(list,tuple)) and i in self.with_header)
+            get_wcs = self.with_wcs==True or (isinstance(self.with_wcs,(list,tuple)) and i in self.with_wcs)
             if get_header:
                 new_args[i].append(header)
             if get_wcs:
