@@ -319,13 +319,10 @@ def get_dtype(*list_of_fits, **kwargs):
 
 def combine(*args, **kwargs):
     comb_fits = combine_helper(*args, **kwargs)
-    list_of_fits = args
-    dtype = get_dtype(list_of_fits)
-    comb_fits = dtype(comb_fits)
-    comb_fits = assign_header(comb_fits, get_common_header(*list_of_fits))
+    comb_fits = assign_header(comb_fits, get_common_header(*args))
     return comb_fits
 
-@manage_dtype()
+@manage_dtype(preserve=True)
 def combine_helper(*args, **kwargs):
     method = 'median'
     if 'method' in kwargs:
