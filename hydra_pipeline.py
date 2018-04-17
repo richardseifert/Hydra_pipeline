@@ -48,6 +48,7 @@ def full_reduce(direc, recipe=None, fast=False):
     output.edit_message("*** COMMAND ISSUED: 'python hydra_pipeline.py full-reduce "+direc+"' ***")
     process.process_flat(direc, recipe, output_log=output, plotter=p).dispatch()
     process.process_thar(direc, recipe, output_log=output, fast=fast, plotter=p).dispatch()
+    process.process_skyflat(direc, recipe, output_log=output, plotter=p).dispatch()
     process.process_sky(direc, recipe, output_log=output, plotter=p).dispatch()
     process.process_target(direc, recipe, output_log=output, plotter=p).dispatch()
 

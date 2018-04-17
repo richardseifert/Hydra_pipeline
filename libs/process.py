@@ -19,14 +19,14 @@ from skyflat_rv import convolve_gaussian, flatten_spec, get_rv
 import matplotlib.pyplot as plt
 
 class processor(object):
-	cp_fnames = {'master_bias':'master_bias.fits',
+    cp_fnames = {'master_bias':'master_bias.fits',
                      'master_flat':'master_flat.fits',
                      'fiber_mask':'fiber_mask.fits',
                      'profile_map':'fiber_profile_map.fits',
                      'throughput_map':'throughput_map.fits',
                      'wavelength_solution':'wvlsol.fits',
                      'master_sky_spec':'master_sky_spec.fits'}
-	def __init__(self, dname, recipes=None, output_log=None, plotter=None):
+    def __init__(self, dname, recipes=None, output_log=None, plotter=None):
 		self.dname=dname
 		if recipes==None:
 			recipes = 'recipes/'+self.dname+'.recipe'
@@ -38,7 +38,7 @@ class processor(object):
 		self.init_dirs()
                 self.output_log.set_log_path(self.outdata+'/output.log')
                 self.plotter = plotter
-	def init_dirs(self):
+    def init_dirs(self):
                 self.indata = 'indata/'+self.dname
                 if not os.path.exists(self.indata):
                     raise OSError("Indata folder "+self.indata+" not found.")
@@ -56,32 +56,32 @@ class processor(object):
                     ensure_path(self.outdata_dirs[pnum])
                     self.plot_dirs[pnum] = self.calib_dirs[pnum]+'/plots'
                     ensure_path(self.plot_dirs[pnum]+'/')
-		
-	def load_calib_products(self, pnum):
-		for product in self.cp_fnames.keys():
-			fpath = None
-			if os.path.exists(self.calib_dirs[pnum]+'/'+self.cp_fnames[product]):
-				fpath = self.calib_dirs[pnum]+'/'+self.cp_fnames[product]
-			elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
-				fpath = self.calib+'/'+self.cp_fnames[product]
-			if fpath != None:
-				f = fits.open(fpath)
-				if product != 'master_sky_spec':
-					d = f[0].data
-				else:
-					d = spectrum(f[1].data, f[0].data, f[2].data)
-				f.close()
-				setattr(self, product, d)
 
-	def output(self, message=None, progress=None, **kwargs):
+    def load_calib_products(self, pnum):
+        for product in self.cp_fnames.keys():
+    		fpath = None
+    		if os.path.exists(self.calib_dirs[pnum]+'/'+self.cp_fnames[product]):
+    			fpath = self.calib_dirs[pnum]+'/'+self.cp_fnames[product]
+    		elif os.path.exists(self.calib+'/'+self.cp_fnames[product]):
+    			fpath = self.calib+'/'+self.cp_fnames[product]
+    		if fpath != None:
+    			f = fits.open(fpath)
+    			if product != 'master_sky_spec':
+    				d = f[0].data
+    			else:
+    				d = spectrum(f[1].data, f[0].data, f[2].data)
+    			f.close()
+    			setattr(self, product, d)
+
+    def output(self, message=None, progress=None, **kwargs):
 		if self.output_log != None:
                     if message!=None:
                         self.output_log.edit_message(message, **kwargs)
                     if progress!=None:
                         self.output_log.edit_progress(progress)
-	def get_recipes(self, pnum=None, rtype=None):
+    def get_recipes(self, pnum=None, rtype=None):
 		return [r for r in self.recipes if (pnum == None or pnum == r.pnum) and (rtype == None or rtype == r.rtype)]
-	def make_master_bias(self):
+    def make_master_bias(self):
 		self.output('Generating master bias frame.')
 		filenames = [fname for r in self.get_recipes(rtype='zero') for fname in r.filenames]
 		if len(filenames) > 0:
@@ -91,7 +91,7 @@ class processor(object):
                     self.master_bias.writeto(self.calib+'/master_bias.fits', clobber=True)
                     for f in biases:
                             f.close()
-	def get_master_bias(self):
+    def get_master_bias(self):
 		try:
 			return self.master_bias
 		except AttributeError:
@@ -239,29 +239,35 @@ class process_skyflat(processor):
             #Set plotter to save plots in the correct plot directory
             self.plotter.set_rootpath(self.plot_dirs[r.pnum])
 
+            #If an uncorrected wavelength solution exists, start using it.
+            ws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution']
+            if os.path.exists(ws_path[:-5]+"_uncorr.fits"):
+                os.rename(ws_path[:-5]+"_uncorr.fits", ws_path)
+
             #Load previously generated calibration products
             self.load_calib_products(r.pnum)
 
             #Extract skyflat spectra from each frame and group by fiber number.
             skyflat_frames = []
             for fname in r.filenames:
-                self.output('Extracting skyflat spectra from '+fname)
+                self.output('Loading in '+fname)
                 skyflat_frame = calibrate(fits.open(self.indata+'/'+fname), master_bias, lacosmic=False)
                 skyflat_frame[0].data = skyflat_frame[0].data / self.throughput_map
                 skyflat_frames.append(skyflat_frame)
+            self.output('Extracting skyflat spectra.')
             skyflat_fibers = robust_mean_extraction(skyflat_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
             skyflat_fibers.scale_spectra()
 
             #Determine fiber RV offests and apply offsets to wavelength solution.
-            # Load template solar spectrum.            
+            # Load template solar spectrum.
             solar_w, solar_f = np.loadtxt("calib/master_calib/bass2000_6000_7000.txt", unpack=True, dtype=np.float32)
             solar_f /= 10000.0
             solar_f /= 0.5*(np.nanmax(solar_f)+np.nanmedian(solar_f))
             solar_f_smooth = convolve_gaussian(solar_w, solar_f, sig=.16) #IMPORT convolve_gaussian
             # Make copy of wavelength solution
-            wvlsol_corr = self.wavelength_solution.copy()
+        #wvlsol_corr = self.wavelength_solution.copy()
             # Make array to store rv offsets
-            rv_arr = []
+            rv_dict = {}
             for fnum in skyflat_fibers.get_fiber_numbers():
                 #Get the skyflat spectrum for this fiber.
                 sp = skyflat_fibers.get_spectrum(fnum)
@@ -281,37 +287,52 @@ class process_skyflat(processor):
                 #     ax.legend(loc=0)
                 #     ax.set_xlabel("Wavelength ($\AA$)")
                 #     ax.set_ylabel("Relative Flux")
-                rv_arr.append(-rv) #km/s that is applied to the observed skyflat.
+                rv_dict[fnum]=-rv #km/s that is applied to the observed skyflat.
 
                 #Shift wavelength solution by the rv offset.
-                wvlsol_corr[self.fiber_mask == fnum] *= (1+(-rv)/3.e5)
+        #wvlsol_corr[self.fiber_mask == fnum] *= (1+(-rv)/3.e5)
             #Save corrected wavelength solution after making a copy of the original, uncorrected wavelength solution.
-            ws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution'] 
-            if not os.path.exists(ws_path[:-5]+"_uncorr.fits"):
-                os.rename(ws_path, ws_path[:-5]+"_uncorr.fits")
+            for rec in self.get_recipes():
+                self.apply_offsets(rec, rv_dict)
+
             rv_path = self.calib_dirs[r.pnum]+'/rv_offsets.txt'
             if not os.path.exists(rv_path):
-                np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), rv_arr), fmt=["%d","%f"])
+                np.savetxt(rv_path, rv_dict.items(), fmt=["%d","%f"])
             else:
                 #rv_offsets.txt already exists, so offsets have already been applied.
                 # Ideally, that means no additional offsets are needed, so rv_arr should be full of 0.0.
                 # But who knows, so I'll add the newly found offsets to the previously found offsets.
                 fnums, rv_arr_old = np.loadtxt(rv_path, unpack=True)
+                rv_arr = np.array([rv_dict[fnum] for fnum in sorted(rv_dict.keys())])
                 if np.array_equal(fnums, skyflat_fibers.get_fiber_numbers()):
                     new_rv_arr = rv_arr_old+rv_arr
                     np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), new_rv_arr), fmt=["%d","%f"])
                 else:
                     #Abort! rv_offsets.txt already exists, but who knows what's in it.
                     # Just go ahead and save over it.
-                    np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), rv_arr), fmt=["%d","%f"])
-
-            fits.writeto(ws_path, wvlsol_corr, clobber=True)
-
+                    np.savetxt(rv_path, rv_dict.items(), fmt=["%d","%f"])
             skyflat_fibers.save(self.calib_dirs[r.pnum]+'/skyflat_spec.fits')
             for sp in skyflat_fibers.get_spectra():
                 self.plotter.clear()
                 sp.plot(p=self.plotter)
 
+    def apply_offsets(self, r, rv_dict):
+        #If an uncorrected wavelength solution exists, start using it.
+        ws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution']
+        if os.path.exists(ws_path[:-5]+"_uncorr.fits"):
+            os.rename(ws_path[:-5]+"_uncorr.fits", ws_path)
+        self.load_calib_products(r.pnum)
+
+        #Apply RV shifts
+        wvlsol_corr = self.wavelength_solution.copy()
+        for fnum, rv in rv_dict.items():
+            wvlsol_corr[self.fiber_mask == fnum] *= (1+rv/3.e5)
+
+        #Save new wavelength solution.
+        ws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution'] 
+        if not os.path.exists(ws_path[:-5]+"_uncorr.fits"):
+            os.rename(ws_path, ws_path[:-5]+"_uncorr.fits")
+        fits.writeto(ws_path, wvlsol_corr, clobber=True)
 
 
 
