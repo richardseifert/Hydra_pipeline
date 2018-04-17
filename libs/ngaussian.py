@@ -27,26 +27,32 @@ def fit_ngaussian(xdata, ydata, n, fast=False):
     xdata = xdata[good]
     ydata = ydata[good]
 
+    #Find positions of peaks
     peak_x, peak_y = find_n_peaks(xdata, ydata, n)
     for i in range(len(peak_x)):
         peak_i = np.where(xdata==peak_x[i])[0][0]
         px, py = get_peak_center(xdata, ydata, peak_i)
         peak_x[i] = px
         peak_y[i] = py
+
+    #Set initial guess for gaussians to be centered at positions found above with a standard deviation of 1.0.    
     p0 = [1.0] #Initial guess of standard deviation of gaussians.
                # Fit this initial standard deviation in the future.
     for x, y in zip(peak_x, peak_y):
         p0.append(y)
         p0.append(x)
 
+    #Find a better initial guess with curve_fit
     f = lambda x, sig: make_ngaussian(x, [sig]+p0[1:])
     coeff, err = curve_fit(f, xdata, ydata, p0=[p0[0]])
     sig = coeff[0]
     p0[0] = coeff[0]
 
+    #Find best fit using mpfit.
     if fast:
         p = p0
     else:
+        #Fit gaussians simultaneously if they overlap by less than 15*sigma.
         #sorted_peak_x = np.argsort(peak_x)
         p = [sig]
         i = 0

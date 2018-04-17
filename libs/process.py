@@ -14,6 +14,9 @@ from os.path import exists
 import time
 from calib import calibrate
 from make_recipe import load_recipes
+from skyflat_rv import convolve_gaussian, flatten_spec, get_rv
+
+import matplotlib.pyplot as plt
 
 class processor(object):
 	cp_fnames = {'master_bias':'master_bias.fits',
@@ -73,9 +76,9 @@ class processor(object):
 	def output(self, message=None, progress=None, **kwargs):
 		if self.output_log != None:
                     if message!=None:
-                            self.output_log.edit_message(message, **kwargs)
+                        self.output_log.edit_message(message, **kwargs)
                     if progress!=None:
-                            self.output_log.edit_progress(progress)
+                        self.output_log.edit_progress(progress)
 	def get_recipes(self, pnum=None, rtype=None):
 		return [r for r in self.recipes if (pnum == None or pnum == r.pnum) and (rtype == None or rtype == r.rtype)]
 	def make_master_bias(self):
@@ -246,12 +249,67 @@ class process_skyflat(processor):
                 skyflat_frame = calibrate(fits.open(self.indata+'/'+fname), master_bias, lacosmic=False)
                 skyflat_frame[0].data = skyflat_frame[0].data / self.throughput_map
                 skyflat_frames.append(skyflat_frame)
-
             skyflat_fibers = robust_mean_extraction(skyflat_frames, self.fiber_mask, self.profile_map, self.wavelength_solution, r.fibers)
             skyflat_fibers.scale_spectra()
+
+            #Determine fiber RV offests and apply offsets to wavelength solution.
+            # Load template solar spectrum.            
+            solar_w, solar_f = np.loadtxt("calib/master_calib/bass2000_6000_7000.txt", unpack=True, dtype=np.float32)
+            solar_f /= 10000.0
+            solar_f /= 0.5*(np.nanmax(solar_f)+np.nanmedian(solar_f))
+            solar_f_smooth = convolve_gaussian(solar_w, solar_f, sig=.16) #IMPORT convolve_gaussian
+            # Make copy of wavelength solution
+            wvlsol_corr = self.wavelength_solution.copy()
+            # Make array to store rv offsets
+            rv_arr = []
+            for fnum in skyflat_fibers.get_fiber_numbers():
+                #Get the skyflat spectrum for this fiber.
+                sp = skyflat_fibers.get_spectrum(fnum)
+                wav = sp.get_wavelength()
+                flux = sp.get_flux()
+                flux_flat = flatten_spec(wav, flux, twav=solar_w, tflux=solar_f_smooth)
+
+                #Cross correlate with solar spectrum to get rv offset.
+                rv = get_rv(wav, flux_flat, solar_w, solar_f_smooth, logspace=True)
+                # print fnum, "RV =",rv
+                # if abs(rv) > 5. or fnum==50:
+                #     flux_flat = flatten_spec(wav, flux, twav=solar_w, tflux=solar_f_smooth, plot=True)
+                #     fig,ax=plt.subplots()
+                #     ax.plot(solar_w, solar_f_smooth, color="red", label="Template")
+                #     ax.plot(wav, flux_flat, color="blue", label="Observed")
+                #     ax.set_title("Fiber "+str(fnum)+": RV = "+str(round(rv,2))+" km/s")
+                #     ax.legend(loc=0)
+                #     ax.set_xlabel("Wavelength ($\AA$)")
+                #     ax.set_ylabel("Relative Flux")
+                rv_arr.append(-rv) #km/s that is applied to the observed skyflat.
+
+                #Shift wavelength solution by the rv offset.
+                wvlsol_corr[self.fiber_mask == fnum] *= (1+(-rv)/3.e5)
+            #Save corrected wavelength solution after making a copy of the original, uncorrected wavelength solution.
+            ws_path = self.calib_dirs[r.pnum]+'/'+self.cp_fnames['wavelength_solution'] 
+            if not os.path.exists(ws_path[:-5]+"_uncorr.fits"):
+                os.rename(ws_path, ws_path[:-5]+"_uncorr.fits")
+            rv_path = self.calib_dirs[r.pnum]+'/rv_offsets.txt'
+            if not os.path.exists(rv_path):
+                np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), rv_arr), fmt=["%d","%f"])
+            else:
+                #rv_offsets.txt already exists, so offsets have already been applied.
+                # Ideally, that means no additional offsets are needed, so rv_arr should be full of 0.0.
+                # But who knows, so I'll add the newly found offsets to the previously found offsets.
+                fnums, rv_arr_old = np.loadtxt(rv_path, unpack=True)
+                if np.array_equal(fnums, skyflat_fibers.get_fiber_numbers()):
+                    new_rv_arr = rv_arr_old+rv_arr
+                    np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), new_rv_arr), fmt=["%d","%f"])
+                else:
+                    #Abort! rv_offsets.txt already exists, but who knows what's in it.
+                    # Just go ahead and save over it.
+                    np.savetxt(rv_path, zip(skyflat_fibers.get_fiber_numbers(), rv_arr), fmt=["%d","%f"])
+
+            fits.writeto(ws_path, wvlsol_corr, clobber=True)
+
             skyflat_fibers.save(self.calib_dirs[r.pnum]+'/skyflat_spec.fits')
             for sp in skyflat_fibers.get_spectra():
-                self.plotter.clear_plot()
+                self.plotter.clear()
                 sp.plot(p=self.plotter)
 
 
