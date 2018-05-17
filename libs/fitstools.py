@@ -212,7 +212,7 @@ def middle_mjd(headers, card='MJD-OBS', exp_card='EXPTIME'):
     exptimes = [np.longdouble(h[exp_card])/86400. for h in headers]
 
     obs_start = mjd_list[np.argmin(mjd_list)]
-    obs_end = (mjd_list+exptimes)[np.argmax(mjd_list+exptimes)]
+    #obs_end = (mjd_list+exptimes)[np.argmax(mjd_list+exptimes)]
     obs_end = np.max([mjd+exp for mjd,exp in zip(mjd_list, exptimes)])
 
     mid_mjd = np.mean([obs_start, obs_end])
@@ -220,6 +220,17 @@ def middle_mjd(headers, card='MJD-OBS', exp_card='EXPTIME'):
     if plus:
         mid_mjd = '+'+mid_mjd
     return mid_mjd
+def start_mjd(headers, card='MJD-OBS', exp_card='EXPTIME'):
+    plus=all([h[card][0]=='+' for h in headers])
+    mjd_list = [np.longdouble(h[card]) for h in headers]
+    exptimes = [np.longdouble(h[exp_card])/86400. for h in headers]
+
+    obs_start = mjd_list[np.argmin(mjd_list)]
+
+    obs_start = str(obs_start)
+    if plus:
+        obs_start = '+'+obs_start
+    return obs_start
 
 def common_header(headers, template_header=None):
     headers = filter(None, headers)
@@ -233,7 +244,7 @@ def common_header(headers, template_header=None):
 
     #mjd_obs_comb = lambda headers: middle_mjd(headers,card='MJD-OBS')
     comb_funcs = {'MJD-OBS' : lambda headers : middle_mjd(headers,card='MJD-OBS'),
-                  'JD' : lambda headers : middle_mjd(headers,card='JD'),
+                  'JD' : lambda headers : start_mjd(headers,card='JD'),
                   'RA' : lambda headers: avg_sexagesimal(headers,card='RA'),
                   'DEC' : lambda headers: avg_sexagesimal(headers,card='DEC'),
                   'UT' : lambda headers: avg_sexagesimal(headers,card='UT')}

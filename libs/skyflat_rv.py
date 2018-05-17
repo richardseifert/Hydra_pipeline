@@ -1,6 +1,4 @@
 import numpy as np
-#import matplotlib.pyplot as plt
-#plt.ion()
 from astropy.io import fits
 from astropy.wcs import WCS
 from scipy import signal
@@ -49,8 +47,16 @@ def convolve_gaussian(x, y, sig=1.0):
 #     return flux/cont
 
 def flatten_spec(wav, flux, twav, tflux, plot=False):
-    wmax = np.nanmax(wav)
-    wmin = np.nanmin(wav)
+    orig_wav = wav.copy()
+    orig_flux = flux.copy()
+
+    #Chop off possibly problematic edges of spectrum.
+    wmax = np.nanmax(wav)-5.
+    wmin = np.nanmin(wav)+5.
+    mask = (wav>=wmin) & (wav<=wmax)
+    wav = wav[mask]
+    flux = flux[mask]
+
     width = (wmax-wmin) / 5.
     cwav = []
     cflux = []
@@ -84,13 +90,7 @@ def flatten_spec(wav, flux, twav, tflux, plot=False):
 
     #cont = UnivariateSpline(cwav, cflux, s=1e7*len(cwav))(wav)
     cont = interp1d(cwav, cflux, kind="linear", fill_value="extrapolate")(wav)
-    # if plot:
-    #     fig, ax = plt.subplots()
-    #     ax.plot(wav, flux, color="blue", label="Spectrum")
-    #     ax.plot(wav, cont, color="orange", label="Continuum fit")
-    #     ax.plot(wav, flux/cont * np.nanmean(flux), color="black")
-    #     ax.scatter(cwav, cflux, color="orange", label="Continuum points")
-    return flux/cont
+    return wav, flux/cont
 
 def doppler_shift(w, v):
     return w*(1+v/3.0e5)
@@ -119,6 +119,8 @@ def get_rv(w, f, tw, tf, logspace=False, range1=50, mult=1):
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
     #Load test skyflat.
     path = "../calib/old/Dec2016/P1/skyflat_spec.fits"
     f = fits.open(path)
@@ -137,7 +139,6 @@ if __name__ == "__main__":
     f.close()
     diffs={}
     for i in [7, 18, 20, 24, 55, 71, 73, 78]:
-        print i
         flux = flux_dat[i]
         wav = wav_dat[i]
         
@@ -145,9 +146,8 @@ if __name__ == "__main__":
         #ax1 = fig.add_subplot(211)
         #ax2 = fig.add_subplot(212, sharex=ax1)
         #ax1.axhline(y=1.0)
-        flux_flat = flatten_spec(wav, flux, twav=solar_w, tflux=solar_f_smooth, plot=True)
+        wav_flat, flux_flat = flatten_spec(wav, flux, twav=solar_w, tflux=solar_f_smooth, plot=True)
         ax = plt.gca()
-        raw_input("WAAAA")
         #ax2.plot(solar_w, solar_f_smooth, color="black", label="BASS2000 solar spectrum")
         #ax2.plot(wav, flux_flat, color="green", label="Flattened skyflat spectrum")
         #ax2.set_xlim(min(wav), max(wav))
@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
         #Run in logspace wavelengths
         #np.savetxt("skyflat_spec"+str(i)+".txt", zip(wav, flux, flux_flat))
-        rv_shft1 = get_rv(wav, flux_flat, solar_w, solar_f_smooth, logspace=True)
+        rv_shft1 = get_rv(wav_flat, flux_flat, solar_w, solar_f_smooth, logspace=True)
         print "Shift found:", rv_shft1
         #np.savetxt("solar_spec.txt", zip(solar_w, solar_f_smooth))
         new_wav1 = doppler_shift(wav,-rv_shft1)
