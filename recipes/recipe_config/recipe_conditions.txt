@@ -1,0 +1,4 @@
+object:     header['IMGTYPE'] == 'object' and not ('sky' in header['OBJECT'].lower() and 'flat' in header['OBJECT'].lower())
+flat:       header['IMGTYPE'] == 'flat'
+comp:       header['IMGTYPE'] == 'comp'
+skyflat:    'sky' in header['OBJECT'].lower() and 'flat' in header['OBJECT'].lower()

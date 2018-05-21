@@ -15,6 +15,7 @@ libs/test_html_plot
 
 recipes/*
 !recipes/.gitkeep
+!recipes/recipe_config
 indata/*
 !indata/.gitkeep
 !indata/test_data
