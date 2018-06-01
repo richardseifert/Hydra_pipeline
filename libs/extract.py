@@ -2,9 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 plt.ion()
 from fitstools import mask_fits, row_avg, manage_dtype, common_header, pad_array, display
-from spectra import spectrum, interp_add
+from spectra import spectrum, interp_add, rmean_spectra, scale_spectra
 from astropy.io import fits
-from spectra import rmean_spectra, scale_spectra
 
 class fibers:
     def __init__(self, init_spectra={}, init_header=None):

@@ -26,3 +26,5 @@ outdata/*
 !outdata/.gitkeep
 
 libs/old
+calib/master_calib/UVES_solar_spectrum.fits
+calib/master_calib/bass2000

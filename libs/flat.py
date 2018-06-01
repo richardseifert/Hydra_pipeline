@@ -1,15 +1,15 @@
-import fitstools
+from fitstools import manage_dtype, mask_fits, display, row_avg, col_avg
 from astropy.io import fits
 from scipy.optimize import minimize
 import numpy as np
-import matplotlib.pyplot as plt
 from math import floor, ceil
 from scipy.optimize import curve_fit
 
 
+
+
 #Helper function to get the number of fibers in a fits object using
 # information from the fits header.
-#
 def getFiberNum(some_header):
     num_fibers = 1
     n = 1
@@ -23,7 +23,7 @@ def getFiberNum(some_header):
 #Function that finds significant peaks in an array of data. Indices
 # of peaks are returned.
 def find_sig_peaks(some_list):
-    threshhold = sum(some_list)/len(some_list)
+    threshhold = np.nanmean(some_list)
 
     #Identify significant peaks
     peaks = []
@@ -125,10 +125,10 @@ def improve_peak_spacing(some_list, peak_list):
 #Function that finds the center of a fiber as a function of y_pixel position.
 # The function also returns the width obtained from the column-averaged
 # profile of the fiber.
-@fitstools.manage_dtype()
+@manage_dtype()
 def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
     spacing = abs(int(round(ident_spacing(fiber_positions))))
-    col_avgs = fitstools.col_avg(some_fits)
+    col_avgs = col_avg(some_fits)
     fcenter_list = []
     approx_fcenter, fwidth = find_center_and_width(col_avgs, xpos, spacing)
     for row in some_fits:
@@ -141,11 +141,11 @@ def fit_fcenter_fwidth(some_fits, fiber_positions, xpos):
 #Function that produces a mask array containing the positions of fibers in an image.
 # 0 indicates a pixel belonging to no fiber.
 # n indicates a pixel belonging to the nth fiber for n > 0
-@fitstools.manage_dtype()
+@manage_dtype()
 def get_fiber_mask(some_fits, fiber_positions, use_fibers):
     mask = np.zeros_like(some_fits)
     spacing = abs(int(round(ident_spacing(fiber_positions))))
-    col_avgs = fitstools.col_avg(some_fits)
+    col_avgs = col_avg(some_fits)
     for fnum in use_fibers:
         f_indx = fnum-2
         xpos = fiber_positions[f_indx]
@@ -203,26 +203,86 @@ def find_center_and_width(some_list, pos, rad):
 #Function that takes a fits-like argument for an image with evenly spaced
 # fibers that are relatively bright, such as a flat field, and identifies
 # the positions of each fiber, returning a numbered mask array.
-@fitstools.manage_dtype(use_args=[0], with_header=True)
+@manage_dtype(use_args=[0], with_header=True)
 def find_fibers(some_fits, use_fibers):
     data, header = some_fits
     n = None
     if header != None:
         n = getFiberNum(header)
-    col_avgs = fitstools.col_avg(data)
-    if False:
-        fig, ax = plt.subplots()
-        ax.plot(col_avgs)
+    col_avgs = col_avg(data)
 
     peaks = get_peaks(col_avgs, n)
     peaks = improve_peak_spacing(col_avgs, peaks)
     spacing = int(round(ident_spacing(peaks)))
-    if False:
-        fig, ax = plt.subplots()
-        ax.plot(col_avgs)
-        ax.scatter(peaks, [col_avgs[p] for p in peaks], c='green')
-        #fig, ax = plt.subplots()
-        #ax.scatter(range(len(peaks)-1), [p2-p1 for p1, p2 in zip(peaks[:-1], peaks[1:])])
     peaks = peaks[::-1] #reversed order is the order they appear on the chip.
     mask = get_fiber_mask(data, peaks, use_fibers)
     return mask
+
+@manage_dtype()
+def make_fiber_profile_map(img, fmask):
+    fiber_profile_map = np.zeros_like(img)
+    fnums = list({n for row in fmask for n in row if n != 0})
+    for fnum in fnums:
+        fiber = mask_fits(img, fmask, maskval=fnum)
+        n = 0
+        for i,spectral_slice in enumerate(fiber):
+            n += 1
+            x = [j for j in range(len(spectral_slice)) if fmask[i][j]==fnum]
+            y = [spectral_slice[j] for j in range(len(spectral_slice)) if fmask[i][j]==fnum]
+            yfit = fit_spatial_profile(x, y)
+            yfit_norm = yfit/np.sum(yfit)
+            for j in range(len(x)):
+                fiber_profile_map[i][int(x[j])] = yfit_norm[j]
+    return fiber_profile_map
+
+def fit_spatial_profile(x, y):
+    x = np.asarray(x)
+    y = np.asarray(y)
+
+    gaussian = lambda x, amp, mu, sig: amp*np.exp(-1/2*((x-mu)/(sig))**2)
+    linear = lambda x, a, b: a*x+b
+
+    func = lambda x, amp, mu, sig, a, b: gaussian(x, amp, mu, sig)+linear(x, a, b)
+    p0 = [max(y), 0.5*(x[0]+x[-1]), 1, 0, 0.5*(y[0]+y[-1])]
+
+
+    try:
+        coeff, err = curve_fit(func, x, y, p0=p0)
+    except RuntimeError:
+        #print 'RuntimeWarning: Could not do gaussian fit.'
+        coeff = p0
+    yfit = func(x, *coeff)
+
+    return yfit
+
+
+@manage_dtype()
+def make_throughput_map(fmask, mflat):
+    #Generate a blank throughput map
+    throughput_map = np.ones_like(fmask)
+
+    #Obtain a list of the used fibers from the fiber mask.
+    fnums = [int(n) for n in set(fmask.flatten()) if n != 0]
+
+    #Correct for the profile of each flat fiber
+    for fnum in fnums:
+        flat_spec = row_avg(mask_fits(mflat, fmask, maskval=fnum))
+        if np.nanmin(flat_spec) < 0:
+            print 'WARNING: Likely weak or broken fiber! Flat fiber contains negative values.'
+        medianf = np.nanmedian(flat_spec)
+        for i,counts in enumerate(flat_spec):
+            throughput_map[i][np.where(fmask[i]==fnum)] *= flat_spec[i]/medianf
+
+
+    #Correct for fiber-to-fiber throughput.
+    profile_corrected_mflat = mflat/throughput_map
+    flat_fiber_avg_vals = []
+    for fnum in fnums:
+        flat_spec = row_avg(mask_fits(profile_corrected_mflat, fmask, maskval=fnum))
+        avg_val = np.nanmean(flat_spec)
+        flat_fiber_avg_vals.append(avg_val)
+    medianf = np.nanmedian(flat_fiber_avg_vals)
+    for f,fnum in zip(flat_fiber_avg_vals,fnums):
+        throughput_map[np.where(fmask==fnum)] *= f/medianf
+
+    return throughput_map

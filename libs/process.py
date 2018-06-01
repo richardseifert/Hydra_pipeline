@@ -1,13 +1,11 @@
 from ensure_path import ensure_path
 import numpy as np
-from fitstools import combine, save_2darr, mask_fits, manage_dtype, assign_header
+from fitstools import combine
 from astropy.io import fits
-from find_fibers import find_fibers
-from fiber_profile import make_fiber_profile_map
-from throughput import make_throughput_map
+from flat import find_fibers, make_fiber_profile_map, make_throughput_map
 from find_wvlsol import wvlsol, wvlsolver
 from extract import fibers, optimal_extraction, robust_mean_extraction
-from spectra import spectrum, interp_mean, interp_median, sum_spectra, mean_spectra, median_spectra, rmean_spectra
+from spectra import spectrum, median_spectra
 from sys import stdout
 import os
 from os.path import exists
@@ -658,7 +656,6 @@ def sky_dorecipe(r, dname, output=None):
     #sky_spec = extract(fiber_mask, fnum, master_sky, wvlsol_map) # NEED OPTIMAL EXTRACTION IN THERE
     sky_fibers = optimal_extraction(master_sky, fiber_mask, use_fibers, master_flat, wvlsol_map)
     output.edit_message('Producing master sky spectrum')
-    #master_sky_spec = interp_median(*sky_specs)
     ss_path = outdata_dir+'/sky_spectra.fits'
     sky_fibers.save(ss_path)
     output.edit_message('Sky spectra saved at '+ss_path)
