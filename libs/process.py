@@ -3,7 +3,7 @@ import numpy as np
 from fitstools import combine
 from astropy.io import fits
 from flat import find_fibers, make_fiber_profile_map, make_throughput_map
-from find_wvlsol import wvlsol, wvlsolver
+from thar import wvlsol, wvlsolver
 from extract import fibers, optimal_extraction, robust_mean_extraction
 from spectra import spectrum, median_spectra
 from sys import stdout
