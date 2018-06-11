@@ -13,7 +13,7 @@ import shutil
 import time
 from calib import calibrate
 from make_recipe import load_recipes
-from skyflat_rv import convolve_gaussian, flatten_spec, get_rv
+from skyflat import convolve_gaussian, flatten_spec, get_rv
 
 class processor(object):
     cp_fnames = {'master_bias':'master_bias.fits',
