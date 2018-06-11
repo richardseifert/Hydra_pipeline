@@ -15,6 +15,8 @@ from calib import calibrate
 from make_recipe import load_recipes
 from skyflat import convolve_gaussian, flatten_spec, get_rv
 
+np.warnings.filterwarnings('ignore')
+
 class processor(object):
     cp_fnames = {'master_bias':'master_bias.fits',
                      'master_flat':'master_flat.fits',
