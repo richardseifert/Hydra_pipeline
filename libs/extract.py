@@ -160,9 +160,13 @@ def optimal_extraction(image, fiber_mask, profile_map, wvlsol=None, use_fibers=N
         one = np.ones_like(D)
         V = (one*rn**2 + abs(gain*D) + dn**2)
         
-        f_numer = P*D/V
-        var_numer = P
-        denom = P**2/V
+        #f_numer = P*D/V
+        #var_numer = P
+        #denom = P**2/V
+
+        f_numer = P**2*D/V
+        var_numer = P**2
+        denom = P/V
 
         if type(wvlsol)!=type(None):
             wvlsol_fib = mask_fits(wvlsol, fiber_mask, maskval=fnum, reshape=True)
